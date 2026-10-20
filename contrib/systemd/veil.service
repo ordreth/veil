@@ -1,0 +1,45 @@
+# systemd user unit for the veil wallpaper daemon.
+#
+# Install: copy it to ~/.config/systemd/user/ (adjust ExecStart if veil is not
+# /usr/bin/veil; the Nix package ships it with its own path), then
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now veil
+# Without --input the daemon shows the wallpapers of its configuration file
+# (~/.config/veil/config.toml) and those saved by `veil set`. Add
+# daemon options to ExecStart, or with `systemctl --user edit veil`.
+#
+# The service needs WAYLAND_DISPLAY in the user manager's environment, and
+# HYPRLAND_INSTANCE_SIGNATURE or SWAYSOCK to pause a hidden video: Hyprland
+# imports these itself, sway needs
+#   exec systemctl --user import-environment WAYLAND_DISPLAY SWAYSOCK
+# A session without graphical-session.target can start it from its own
+# configuration instead of enabling it (Hyprland:
+#   exec-once = systemctl --user start veil).
+
+[Unit]
+Description=Veil wallpaper daemon
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Ready once every output shows its wallpaper (a video: its first frame).
+Type=notify
+ExecStart=/usr/bin/veil daemon
+# Comes back after a crash (GStreamer's waylandsink on a monitor change,
+# docs/known-issues.md entry 1) with the wallpapers it had: they are saved.
+Restart=on-failure
+RestartSec=2
+# Not after a command line or a configuration file that is wrong (2), a second
+# daemon (4), or a compositor that is gone (5): a restart cannot change those.
+# After fixing the configuration file: systemctl --user restart veil.
+RestartPreventExitStatus=2 4 5
+# The event loop tells systemd every 15 s that it is alive; a stuck loop is
+# killed and restarted.
+WatchdogSec=30
+# One allocator arena: glibc keeps the memory a replaced video's threads
+# freed, and each arena keeps its own; with one it stays flat over video
+# switches, and playback costs the same (docs/known-issues.md, entry 3).
+Environment=MALLOC_ARENA_MAX=1
+
+[Install]
+WantedBy=graphical-session.target

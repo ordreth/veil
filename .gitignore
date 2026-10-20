@@ -1,0 +1,82 @@
+# ==========================================
+# Rust & Cargo Build Artifacts
+# ==========================================
+target/
+**/*.rs.bk
+*.profraw
+*.profdata
+
+# Note: Cargo.lock is intentionally NOT ignored because this is an application/binary
+# and Nix explicitly tracks it for reproducible builds (cargoLock.lockFile).
+
+# ==========================================
+# Nix & Direnv
+# ==========================================
+result
+result-*
+.direnv/
+
+# ==========================================
+# Media Assets & Test Samples
+# ==========================================
+# Test wallpapers/videos should not pollute repository history
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.avi
+*.gif
+*.jpg
+*.jpeg
+*.png
+*.webp
+
+# Keep sample directories tracked while ignoring arbitrary media files
+!assets/
+!tests/assets/
+tests/assets/*
+!tests/assets/.gitkeep
+
+# ==========================================
+# Profiling, Benchmarks & Leak Tracking
+# ==========================================
+# Heaptrack, Valgrind, Massif & Core dumps
+heaptrack.*
+massif.out.*
+callgrind.out.*
+valgrind.*.log
+gmon.out
+core
+core.*
+
+# ==========================================
+# Runtime Sockets & Temporary Files
+# ==========================================
+# Hyprland IPC dumps and daemon IPC sockets
+*.sock
+*.log
+
+# ==========================================
+# IDEs & Editor Metadata
+# ==========================================
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.helix/
+
+# ==========================================
+# OS & Environment
+# ==========================================
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+
+!assets/icon/*.png

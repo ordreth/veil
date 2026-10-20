@@ -1,0 +1,98 @@
+name: Release
+
+# A version tag (`v1.0.0`) publishes a GitHub release: one tarball per
+# architecture, built and tested in a Debian 12 container
+# (scripts/release/build.sh, which runs the same way on a developer's
+# machine), SHA256SUMS, a signed build-provenance attestation of each tarball,
+# and the tag's section of CHANGELOG.md as the release notes. A tag whose
+# version is not the one in Cargo.toml, or that has no section in
+# CHANGELOG.md, is refused before anything is built (scripts/release/notes.sh).
+# A version with a pre-release part (`v1.0.0-rc.1`) becomes a pre-release.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  notes:
+    name: check the tag, take its notes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release notes from CHANGELOG.md
+        run: scripts/release/notes.sh "$GITHUB_REF_NAME" > notes.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes.md
+          if-no-files-found: error
+
+  build:
+    name: build (${{ matrix.arch }})
+    needs: notes
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          # Built on an ARM machine, not cross-compiled: the binary has to
+          # run to write its completions and man pages, and its tests run.
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, test and pack in the build container
+        run: scripts/release/build.sh --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: publish the release
+    needs: [notes, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      # The release and its files.
+      contents: write
+      # The attestations, signed with the workflow's identity.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tarball-*
+          merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: notes
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.tar.gz
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          prerelease=()
+          if [[ $version == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "veil $version" --notes-file notes.md \
+            "${prerelease[@]}" dist/*.tar.gz dist/SHA256SUMS

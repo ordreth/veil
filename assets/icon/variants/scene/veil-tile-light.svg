@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img">
+<title>Veil</title>
+  <defs>
+    <linearGradient id="stl-gg" gradientUnits="userSpaceOnUse" x1="0" y1="33" x2="0" y2="155">
+      <stop offset="0" stop-color="#E0A458"/>
+      <stop offset="0.55" stop-color="#D98055"/>
+      <stop offset="1" stop-color="#C8664A"/>
+    </linearGradient>
+    <radialGradient id="stl-bloom" gradientUnits="userSpaceOnUse" cx="170" cy="105" r="75">
+      <stop offset="0" stop-color="#F3E6D3" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#F3E6D3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stl-beam" gradientUnits="userSpaceOnUse" x1="190" y1="178" x2="102" y2="242">
+      <stop offset="0" stop-color="#E0A458" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#D9A5A0" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="stl-glass"><rect x="117" y="33" width="106" height="122"/></clipPath>
+    <filter id="stl-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
+    <filter id="stl-wcBeam" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="21" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="9" xChannelSelector="R" yChannelSelector="G" result="d0"/>
+      <feGaussianBlur in="d0" stdDeviation="1.1" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="32" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.9 0 0 0 0.55" result="grainA"/>
+      <feComposite in="d" in2="grainA" operator="in" result="d2"/>
+      <feMorphology in="d" operator="erode" radius="1.4" result="er"/>
+      <feComposite in="d" in2="er" operator="out" result="rim"/>
+      <feColorMatrix in="rim" type="matrix" values="0.80 0 0 0 0  0 0.74 0 0 0  0 0 0.74 0 0  0 0 0 0.35 0" result="rimd"/>
+      <feMerge><feMergeNode in="d2"/><feMergeNode in="rimd"/></feMerge>
+    </filter>
+    <filter id="stl-wcFrame" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.022" numOctaves="2" seed="7" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="5" xChannelSelector="R" yChannelSelector="G" result="d0"/>
+      <feGaussianBlur in="d0" stdDeviation="0.5" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="18" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.55 0 0 0 0.725" result="grainA"/>
+      <feComposite in="d" in2="grainA" operator="in" result="d2"/>
+      <feMorphology in="d" operator="erode" radius="1.4" result="er"/>
+      <feComposite in="d" in2="er" operator="out" result="rim"/>
+      <feColorMatrix in="rim" type="matrix" values="0.80 0 0 0 0  0 0.74 0 0 0  0 0 0.74 0 0  0 0 0 0.6 0" result="rimd"/>
+      <feMerge><feMergeNode in="d2"/><feMergeNode in="rimd"/></feMerge>
+    </filter>
+    <filter id="stl-wcGlass" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="13" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="6" xChannelSelector="R" yChannelSelector="G" result="d0"/>
+      <feGaussianBlur in="d0" stdDeviation="0.6" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="24" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.7 0 0 0 0.65" result="grainA"/>
+      <feComposite in="d" in2="grainA" operator="in" result="d2"/>
+      <feMorphology in="d" operator="erode" radius="1.4" result="er"/>
+      <feComposite in="d" in2="er" operator="out" result="rim"/>
+      <feColorMatrix in="rim" type="matrix" values="0.80 0 0 0 0  0 0.74 0 0 0  0 0 0.74 0 0  0 0 0 0.55 0" result="rimd"/>
+      <feMerge><feMergeNode in="d2"/><feMergeNode in="rimd"/></feMerge>
+    </filter>
+    <filter id="stl-wcInk" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="33" result="warp"/>
+      <feDisplacementMap in="SourceGraphic" in2="warp" scale="4" xChannelSelector="R" yChannelSelector="G" result="d0"/>
+      <feGaussianBlur in="d0" stdDeviation="0.2" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="44" result="grain"/>
+      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.2 0 0 0 0.9" result="grainA"/>
+      <feComposite in="d" in2="grainA" operator="in" result="d2"/>
+      <feMorphology in="d" operator="erode" radius="1.4" result="er"/>
+      <feComposite in="d" in2="er" operator="out" result="rim"/>
+      <feColorMatrix in="rim" type="matrix" values="0.80 0 0 0 0  0 0.74 0 0 0  0 0 0.74 0 0  0 0 0 0.0 0" result="rimd"/>
+      <feMerge><feMergeNode in="d2"/><feMergeNode in="rimd"/></feMerge>
+    </filter>
+    <filter id="stl-paperGrain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="4"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.23  0 0 0 0 0.16  0 0 0 0 0.16  0 0 0 0.55 -0.231"/>
+    </filter>
+    <filter id="stl-paperBlotch" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="9"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.85  0 0 0 0 0.65  0 0 0 0 0.35  0 0 0 0.3 -0.11399999999999999"/>
+    </filter>
+    <clipPath id="stl-tileClip"><rect width="256" height="256" rx="56"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#F3E6D3"/>
+  <g clip-path="url(#stl-tileClip)">
+    <rect width="256" height="256" filter="url(#stl-paperBlotch)"/>
+  </g>
+  <g transform="translate(128 128) scale(0.96) translate(-140 -133)">
+    <g filter="url(#stl-wcBeam)">
+      <polygon points="108,178 166.5,178 135.2,207.4 76.7,207.4" fill="url(#stl-beam)"/>
+      <polygon points="173.5,178 232,178 200.7,207.4 142.2,207.4" fill="url(#stl-beam)"/>
+      <polygon points="71.3,212.6 129.8,212.6 98.5,242 40,242" fill="url(#stl-beam)"/>
+      <polygon points="136.8,212.6 195.3,212.6 164,242 105.5,242" fill="url(#stl-beam)"/>
+    </g>
+    <g filter="url(#stl-wcGlass)">
+      <g clip-path="url(#stl-glass)">
+        <rect x="113" y="29" width="114" height="130" fill="url(#stl-gg)"/>
+        <g filter="url(#stl-soft)">
+          <ellipse cx="140" cy="52" rx="24" ry="16" fill="#D9A5A0" opacity="0.55"/>
+          <ellipse cx="205" cy="140" rx="26" ry="16" fill="#8E5A6B" opacity="0.40"/>
+          <ellipse cx="150" cy="138" rx="22" ry="12" fill="#E0A458" opacity="0.55"/>
+        </g>
+        <path d="M113 124 C140 114 165 126 195 118 L227 120 V159 H113 Z" fill="#5E6B84" opacity="0.6"/>
+        <circle cx="140" cy="134" r="15" fill="#F3E6D3" opacity="0.92"/>
+        <path d="M113 138 C135 126 155 134 178 130 C198 126 212 132 227 128 V159 H113 Z" fill="#8E5A6B" opacity="0.85"/>
+        <path d="M113 146 C140 138 175 150 227 140 V159 H113 Z" fill="#3A2630"/>
+        <g fill="#3A2630" stroke="#3A2630">
+          <rect x="205" y="78" width="5" height="66" stroke="none"/>
+          <circle cx="208" cy="66" r="16" stroke="none"/>
+          <circle cx="195" cy="76" r="11" stroke="none"/>
+          <circle cx="221" cy="74" r="11" stroke="none"/>
+          <path d="M206 104 C198 98 190 98 182 100" fill="none" stroke-width="3" stroke-linecap="round"/>
+          <path d="M186 99 V124 M198 100 V124" fill="none" stroke-width="1.6"/>
+          <rect x="183" y="124" width="18" height="3.5" rx="1.5" stroke="none"/>
+        </g>
+        <path d="M136 58 q4 -4 8 0 q4 -4 8 0 M152 72 q3 -3 6 0 q3 -3 6 0" fill="none" stroke="#3A2630" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="170" cy="105" r="75" fill="url(#stl-bloom)"/>
+        <path d="M117 125 L168 33 L188 33 L117 155 Z" fill="#F3E6D3" opacity="0.14"/>
+        <path d="M180 155 L223 95 L223 118 L196 155 Z" fill="#F3E6D3" opacity="0.10"/>
+      </g>
+    </g>
+    <g filter="url(#stl-wcFrame)">
+      <path fill-rule="evenodd" fill="#3B2A2A" d="M118 24 H222 Q232 24 232 34 V154 Q232 164 222 164 H118 Q108 164 108 154 V34 Q108 24 118 24 Z M117 33 V155 H223 V33 Z"/>
+      <rect x="167" y="33" width="6" height="122" fill="#3B2A2A"/>
+      <rect x="117" y="91" width="106" height="6" fill="#3B2A2A"/>
+      <rect x="100" y="162" width="140" height="12" rx="4" fill="#3B2A2A"/>
+    </g>
+    <g filter="url(#stl-wcInk)" fill="none" stroke="#F3E6D3" stroke-opacity="0.35" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M110 30 Q109 25 118 25.5 H221 Q231 25 231 34 V154"/>
+      <path d="M100 168 V174 H240 V162"/>
+      <path d="M117 34 H223 V154"/>
+    </g>
+    <g filter="url(#stl-wcInk)">
+      <circle cx="130" cy="194" r="3" fill="#C8664A" opacity="0.75"/>
+      <circle cx="190" cy="192" r="2.5" fill="#C8664A" opacity="0.6"/>
+      <circle cx="108" cy="226" r="2.5" fill="#C8664A" opacity="0.55"/>
+      <circle cx="176" cy="222" r="2" fill="#C8664A" opacity="0.5"/>
+      <circle cx="150" cy="232" r="1.8" fill="#C8664A" opacity="0.4"/>
+      <circle cx="94" cy="206" r="1.6" fill="#E0A458" opacity="0.7"/>
+      <circle cx="214" cy="190" r="2.2" fill="#C8664A" opacity="0.55"/>
+      <circle cx="84" cy="236" r="1.4" fill="#8E5A6B" opacity="0.5"/>
+    </g>
+  </g>
+  <g clip-path="url(#stl-tileClip)" opacity="0.9">
+    <rect width="256" height="256" filter="url(#stl-paperGrain)"/>
+  </g>
+</svg>

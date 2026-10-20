@@ -1,0 +1,53 @@
+# veil configuration file, annotated. Copy it to ~/.config/veil/config.toml
+# ($XDG_CONFIG_HOME/veil/config.toml), or give `veil daemon --config FILE`.
+# The reference is docs/configuration.md.
+#
+# The daemon reads it once, when it starts; restart the daemon after a change
+# (`systemctl --user restart veil`). `veil config check` reads it as the
+# daemon would and says what is wrong, with the line.
+#
+# A flag on the command line wins over this file, and the file over the
+# built-in default. Every key is optional; an unknown key is an error.
+
+[defaults]
+# How a wallpaper is fitted to its output: fill, fit, stretch, center, tile
+# (`--mode`). Also the default of `veil set`.
+mode = "fill"
+
+# Colour of what the wallpaper does not cover, and of an output without a
+# wallpaper (`--bg-color`). Also the default of `veil set` and `veil clear`.
+bg_color = "#000000"
+
+# When a video is paused because it cannot be seen (Hyprland and sway):
+# never, fullscreen (a fullscreen window on its output), covered (windows
+# cover the whole output) (`--pause-on`).
+pause_on = "fullscreen"
+
+# Seconds a video may go without the compositor taking its frames (locked
+# screen, monitor off) before it is stopped; 0 never stops it
+# (`--release-unseen-after`).
+release_unseen_after = 2
+
+# The outputs to draw on (`--output`). Left out or empty: every output, also
+# those connected later.
+# outputs = ["DP-3", "eDP-1"]
+
+# The wallpaper of one output, by the name the compositor gives it (`veil
+# outputs` lists them). The output shows it at every start; `veil set`
+# changes it until the daemon stops.
+#
+# `input` is an image or a video. `~` and $VARIABLES are expanded, and a
+# relative path is taken from the directory of this file. `mode` and
+# `bg_color` default to [defaults].
+[output."DP-3"]
+input = "~/Videos/waves.mp4"
+mode = "fit"
+
+# A section without `input` shows only its colour, as after `veil clear`.
+[output."HDMI-A-1"]
+bg_color = "#202020"
+
+# "*" is every output without a section of its own. Without it, those outputs
+# show the wallpaper saved by the last `veil set`.
+[output."*"]
+input = "$HOME/Pictures/wallpaper.png"
