@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt / clippy / test / build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      # Everything runs inside the project's dev shell so CI uses the exact
+      # toolchain and GStreamer/Wayland libraries as local development.
+      - name: Format
+        run: nix develop --command cargo fmt --check
+      - name: Clippy
+        run: nix develop --command cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: nix develop --command cargo test
+      - name: Build (release)
+        run: nix develop --command cargo build --release
+
+  headless:
+    name: headless compositor tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      # The daemon in a headless sway of its own per test (tests/headless.rs):
+      # images, videos, outputs that come and go, the pauses, the commands.
+      # Ignored by a plain `cargo test`, because they need the tools of this
+      # shell.
+      - name: Headless sway tests
+        run: nix develop .#headless --command cargo test --test headless -- --ignored
+
+  soak:
+    name: soak tests (short)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      # Soak tests: memory, threads and file descriptors of the release
+      # build over a looping video and over wallpaper switches, in a headless
+      # sway, with the allocator setting veil ships with. Short versions of
+      # the local runs (docs/measurements.md); the reports and graphs are
+      # kept as an artifact, also when a test fails.
+      - name: Build (release)
+        id: build
+        run: nix develop .#headless --command cargo build --release
+      - name: Loop soak
+        run: nix develop .#headless --command scripts/bench/soak.sh loop --duration 180 --out target/bench/ci-loop
+      - name: Switching soak
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: nix develop .#headless --command scripts/bench/soak.sh switch --switches 200 --out target/bench/ci-switch
+      - name: Keep the reports and graphs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: soak
+          path: |
+            target/bench/ci-loop/
+            target/bench/ci-switch/
+          if-no-files-found: warn
+
+  nix-build:
+    name: nix flake check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      # The package (its build runs the tests with the GStreamer plugins),
+      # clippy, rustfmt and the plugin set of the wrapped binary.
+      - run: nix flake check --print-build-logs
+
+  msrv:
+    name: build with the oldest supported Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      # The dev shell with the Rust of `rust-version` in Cargo.toml in place
+      # of nixpkgs' (flake.nix, `devShells.msrv`).
+      - name: Check every target
+        run: nix develop .#msrv --command cargo check --locked --all-targets
+
+  release-build:
+    name: release build (Debian 12 container)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # What a version tag builds (release.yml), here on every change so the
+      # release scripts cannot rot between releases: the tests against
+      # Debian 12's GStreamer 1.22, the release binary and its tarball.
+      - name: Build, test and pack
+        run: scripts/release/build.sh --out dist
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      # Advisories (unmaintained crates included), licences, duplicate
+      # crates and sources, as deny.toml says. Blocking: a new advisory fails
+      # it until the dependency is changed or the advisory is ignored there
+      # with a reason.
+      - name: Check the dependencies
+        run: nix develop --command cargo deny --locked check
+      # THIRD-PARTY-NOTICES is generated from Cargo.lock; it must not be stale.
+      - name: Check the third-party notices
+        run: |
+          nix develop --command cargo about generate about.hbs -o "$RUNNER_TEMP/notices"
+          diff -u THIRD-PARTY-NOTICES "$RUNNER_TEMP/notices"

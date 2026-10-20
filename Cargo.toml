@@ -1,0 +1,71 @@
+[package]
+name = "veil"
+version = "1.0.0-beta.1"
+edition = "2021"
+# The oldest Rust veil builds with: `notify-rust` 4.18 needs 1.89. CI checks
+# it (`nix develop .#msrv`, which reads this field).
+rust-version = "1.89"
+description = "Minimalist dynamic and static wallpaper daemon for Wayland/wlroots (Hyprland)"
+license-file = "LICENSE"
+# Not published on crates.io (the name is taken there, and the license is not an
+# open-source one).
+publish = false
+repository = "https://github.com/ordreth/veil"
+readme = "README.md"
+keywords = ["wallpaper", "wayland", "hyprland", "video", "daemon"]
+categories = ["multimedia::video", "multimedia::images", "command-line-utilities"]
+
+[lib]
+name = "veil"
+path = "src/lib.rs"
+
+[[bin]]
+name = "veil"
+path = "src/main.rs"
+
+[dependencies]
+smithay-client-toolkit = "0.19"
+wayland-client = { version = "0.31", features = ["system"] }
+gstreamer = "0.22"
+gstreamer-video = "0.22"
+image = "0.25"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1.0"
+notify-rust = { version = "4", default-features = false, features = [
+    "zbus",
+    "async",
+    "serde",
+] }
+calloop = { version = "0.13", features = ["signals"] }
+rustix = { version = "1", features = ["net", "process"] }
+calloop-wayland-source = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sd-notify = "0.4"
+fast_image_resize = "6"
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
+clap_complete = "4"
+clap_complete_nushell = "4"
+clap_mangen = "0.3"
+
+# The project's coding standards, as far as a tool can check them, for every
+# target of the package (library, binary, tests).
+#
+# `unsafe` is refused by the compiler. The one module that needs it
+# (`engine::video`, which hands raw Wayland pointers to GStreamer) allows it
+# for itself, and there clippy refuses an `unsafe` without a `SAFETY` comment.
+[lints.rust]
+unsafe_code = "deny"
+
+# No bare `unwrap()`, in tests neither: `.expect("...")` says what was expected.
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+unwrap_used = "deny"
+
+[profile.release]
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img">
+<title>Veil</title>
+  <defs>
+    <linearGradient id="ffd-gg" gradientUnits="userSpaceOnUse" x1="0" y1="33" x2="0" y2="155">
+      <stop offset="0" stop-color="#E0A458"/>
+      <stop offset="1" stop-color="#C8664A"/>
+    </linearGradient>
+    <radialGradient id="ffd-bloom" gradientUnits="userSpaceOnUse" cx="170" cy="105" r="75">
+      <stop offset="0" stop-color="#F3E6D3" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#F3E6D3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ffd-beam" gradientUnits="userSpaceOnUse" x1="190" y1="178" x2="102" y2="242">
+      <stop offset="0" stop-color="#E0A458" stop-opacity="0.65"/>
+      <stop offset="1" stop-color="#D9A5A0" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="ffd-glass"><rect x="117" y="33" width="106" height="122"/></clipPath>
+  </defs>
+  <g transform="translate(128 128) scale(1.1) translate(-140 -133)">
+    <polygon points="108,178 166.5,178 135.2,207.4 76.7,207.4" fill="url(#ffd-beam)"/>
+    <polygon points="173.5,178 232,178 200.7,207.4 142.2,207.4" fill="url(#ffd-beam)"/>
+    <polygon points="71.3,212.6 129.8,212.6 98.5,242 40,242" fill="url(#ffd-beam)"/>
+    <polygon points="136.8,212.6 195.3,212.6 164,242 105.5,242" fill="url(#ffd-beam)"/>
+    <rect x="108" y="24" width="124" height="140" rx="10" fill="#F3E6D3"/>
+    <g clip-path="url(#ffd-glass)">
+      <rect x="117" y="33" width="106" height="122" fill="url(#ffd-gg)"/>
+      <circle cx="170" cy="105" r="75" fill="url(#ffd-bloom)"/>
+      <path d="M117 125 L168 33 L188 33 L117 155 Z" fill="#F3E6D3" opacity="0.10"/>
+      <path d="M180 155 L223 95 L223 118 L196 155 Z" fill="#F3E6D3" opacity="0.08"/>
+    </g>
+    <rect x="167" y="33" width="6" height="122" fill="#F3E6D3"/>
+    <rect x="117" y="91" width="106" height="6" fill="#F3E6D3"/>
+    <rect x="117" y="33" width="106" height="122" fill="none" stroke="#3B2A2A" stroke-opacity="0.25" stroke-width="1.5"/>
+    <rect x="100" y="162" width="140" height="12" rx="4" fill="#F3E6D3"/>
+    <rect x="104" y="163.5" width="132" height="2.5" rx="1.25" fill="#3B2A2A" opacity="0.28"/>
+    <circle cx="130" cy="194" r="3" fill="#F3E6D3" opacity="0.7"/>
+    <circle cx="190" cy="192" r="2.5" fill="#F3E6D3" opacity="0.55"/>
+    <circle cx="108" cy="226" r="2.5" fill="#F3E6D3" opacity="0.5"/>
+    <circle cx="176" cy="222" r="2" fill="#F3E6D3" opacity="0.45"/>
+    <circle cx="150" cy="232" r="1.8" fill="#F3E6D3" opacity="0.35"/>
+  </g>
+</svg>

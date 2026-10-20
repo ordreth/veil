@@ -1,0 +1,82 @@
+# What veil's dependency graph may contain, checked by `cargo deny check`
+# CI runs it as a blocking job; run it locally
+# with `nix develop -c cargo deny check` (it fetches the advisory database).
+#
+# Every exception below says why it is there. Remove it when the reason is
+# gone: cargo deny warns about one that no longer matches anything.
+
+[graph]
+# veil is built for Linux only (flake.nix: x86_64 and aarch64), so crates that
+# only Windows, macOS or WASM builds pull in are not counted.
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+[advisories]
+# Every advisory fails the check, also one that only says a crate is no longer
+# maintained, unless it is ignored here.
+unmaintained = "all"
+yanked = "deny"
+ignore = [
+    # A proc macro, run at build time only. The gstreamer crates of 0.22 and
+    # zbus 5 (through notify-rust) use it; upgrading gstreamer removes the need.
+    { id = "RUSTSEC-2024-0436", reason = "paste: build-time macro of gstreamer 0.22 and zbus 5, no release of them without it in reach" },
+    # Merged into zbus 6. notify-rust (4.18.2, the latest) still needs zbus 5,
+    # which needs these; replacing notify-rust removes the need.
+    { id = "RUSTSEC-2026-0370", reason = "zvariant: needed by zbus 5, which notify-rust needs" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names: needed by zbus 5, which notify-rust needs" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: needed by zbus 5, which notify-rust needs" },
+]
+
+[licenses]
+# What the dependencies may be licensed under, so that veil can distribute
+# them in its binaries. (veil itself is source-available: see LICENSE.)
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[licenses.private]
+# veil itself (`publish = false`, a `license-file`): the check is about what veil
+# depends on.
+ignore = true
+
+[bans]
+# Two versions of one crate fail the check, except those listed here. Each
+# is pulled in by a dependency veil cannot change by itself; the newer
+# version is the one veil's own dependencies use.
+multiple-versions = "deny"
+wildcards = "deny"
+skip = [
+    # system-deps 6, the build dependency of the glib and gstreamer -sys
+    # crates of gstreamer 0.22, reads their metadata with toml 0.8.
+    { crate = "toml@0.8.23", reason = "system-deps 6 (gstreamer 0.22 build)" },
+    { crate = "toml_datetime@0.6.11", reason = "system-deps 6 (gstreamer 0.22 build)" },
+    { crate = "toml_edit@0.22.27", reason = "system-deps 6 (gstreamer 0.22 build)" },
+    { crate = "serde_spanned@0.6.9", reason = "system-deps 6 (gstreamer 0.22 build)" },
+    { crate = "winnow@0.7.15", reason = "system-deps 6 (gstreamer 0.22 build)" },
+    # calloop 0.13 and smithay-client-toolkit 0.19 (with xkbcommon 0.7).
+    { crate = "rustix@0.38.44", reason = "calloop 0.13, smithay-client-toolkit 0.19" },
+    { crate = "linux-raw-sys@0.4.15", reason = "rustix 0.38 of calloop 0.13" },
+    { crate = "memmap2@0.8.0", reason = "xkbcommon 0.7 of smithay-client-toolkit 0.19" },
+    # veil's own error type is still on thiserror 1, like calloop 0.13;
+    # upgrading it removes the need.
+    { crate = "thiserror@1.0.69", reason = "veil and calloop 0.13; upgrading both removes the need" },
+    { crate = "thiserror-impl@1.0.69", reason = "thiserror 1" },
+    # Proc macros of gstreamer 0.22 and of image's AVIF encoder are on syn 2.
+    { crate = "syn@2.0.119", reason = "proc macros of gstreamer 0.22, zbus 5 and rav1e" },
+    # Inside image 0.25: gstreamer 0.22 has itertools 0.13, image's AVIF
+    # encoder 0.14; exr and png have miniz_oxide 0.8, flate2 0.9.
+    { crate = "itertools@0.13.0", reason = "gstreamer 0.22" },
+    { crate = "miniz_oxide@0.8.9", reason = "exr and png of image 0.25" },
+]
+
+[sources]
+# crates.io only: no other registry, no git dependency.
+unknown-registry = "deny"
+unknown-git = "deny"
