@@ -242,7 +242,7 @@ The answer, on one line (spread out here):
     "pause_on": "fullscreen",
     "pid": 4242,
     "uptime_secs": 7385,
-    "version": "0.1.0"
+    "version": "1.0.0-beta.1"
   }
 }
 ```
@@ -490,7 +490,7 @@ The commands of `veil` are the clients above, plus a few that need no daemon. Ev
 `veil status` without `--json`:
 
 ```text
-veil 0.1.0 (pid 4242), running for 2h 03m; videos pause on: fullscreen
+veil 1.0.0-beta.1 (pid 4242), running for 2h 03m; videos pause on: fullscreen
 default: /home/me/walls/sea.png (fill, #000000)
 DP-3: playing /home/me/walls/waves.webm (fill, #000000); 1920x1080 at scale 1; video 1280x720, 30 fps, 41 frames shown, 0 dropped
 HDMI-A-1: showing /home/me/walls/sea.png (fit, #202020); 1920x1080 at scale 1
