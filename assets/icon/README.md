@@ -27,4 +27,4 @@ Nothing in the build uses these files: the package and the release tarball do no
 
 ## Terms
 
-The icon is covered by the licence of the repository, and its name and logo are reserved in `ADDITIONAL-PERMISSIONS.md`. Where the artwork and any font or generator behind it come from is recorded in the project's decision log (task I-1) before the release.
+The icon is covered by the licence of the repository, and its name and logo are reserved in `ADDITIONAL-PERMISSIONS.md`.

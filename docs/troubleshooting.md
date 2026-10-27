@@ -10,7 +10,7 @@ The failures below were produced on purpose in a headless sway 1.12 with GStream
 2. **What does it think it shows?** `veil status` has one line per output:
 
    ```text
-   veil 0.1.0 (pid 295816), running for 4s; videos pause on: fullscreen
+   veil 1.0.0-beta.1 (pid 295816), running for 4s; videos pause on: fullscreen
    default: /home/me/walls/sea.mp4 (fill, #000000)
    HEADLESS-1: playing /home/me/walls/sea.mp4 (fill, #000000); 1920x1080 at scale 1; video 1920x1080, 30 fps, 71 frames shown, 0 dropped
    ```
@@ -28,7 +28,7 @@ The failures below were produced on purpose in a headless sway 1.12 with GStream
    | `not connected` | The output is unplugged or disabled. Its wallpaper comes back with it. |
 
    An output that is missing from the list is one the daemon does not draw on (see [An output name is not found](#an-output-name-is-not-found)).
-3. **What does the log say?** `journalctl --user -u veil` under systemd, otherwise the daemon's stderr. The first line names the versions (`veil 0.1.0 (GStreamer 1.28.7)`), and every video logs the decoder GStreamer picked for it (`video decoder: nvh264dec (hardware)`).
+3. **What does the log say?** `journalctl --user -u veil` under systemd, otherwise the daemon's stderr. The first line names the versions (`veil 1.0.0-beta.1 (GStreamer 1.28.7)`), and every video logs the decoder GStreamer picked for it (`video decoder: nvh264dec (hardware)`).
 
 ## The screen is black, or shows only a colour
 

@@ -255,7 +255,7 @@ veil ping                      # prints `pong` if a daemon runs, else exits with
 `veil status` prints a line per monitor:
 
 ```text
-veil 0.1.0 (pid 512958), running for 7s; videos pause on: fullscreen
+veil 1.0.0-beta.1 (pid 512958), running for 7s; videos pause on: fullscreen
 default: /home/me/Videos/waves.mp4 (fill, #000000)
 DP-3: paused (by veil pause) /home/me/Videos/waves.mp4 (fill, #000000); 1920x1080 at scale 1; video 1280x720, 30 fps, 0 frames shown, 0 dropped
 HDMI-A-1: showing /home/me/Pictures/wallpaper.png (fit, #000000); 2048x1152 at scale 1.25
@@ -380,6 +380,12 @@ Start with `veil status` (what each monitor shows, and whether a video plays, wa
 ## Reporting problems
 
 veil does not take pull requests or issues ([`CONTRIBUTING.md`](CONTRIBUTING.md)). Reports of what worked or failed on your machine are welcome in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports); [`docs/troubleshooting.md`](docs/troubleshooting.md#reporting-a-problem) says what to include. Nothing is promised in return (no answer, no fix, no date). A security problem is reported privately, as [`SECURITY.md`](SECURITY.md) says. Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
+## Privacy and what veil plays
+
+veil collects nothing and sends nothing: it has no telemetry and opens no network connection. What it writes stays on your machine: the saved wallpapers in `~/.local/state/veil/state.json` (with the paths of your files) and, with the Nix package, a GStreamer plugin cache in `~/.cache/veil/`. Desktop notifications go over the session bus and may contain the path of a wallpaper. See [`SECURITY.md`](SECURITY.md) for what veil trusts.
+
+veil includes no video or audio codec: it plays what the GStreamer plugins installed on your system can play. Which codecs those are, under which licenses and patents, and whether you may play a given file, is for you and your distribution to decide, and so is the content of the files you show.
 
 ## License
 

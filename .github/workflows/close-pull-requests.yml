@@ -1,0 +1,45 @@
+name: Close pull requests
+
+# veil takes no pull requests (CONTRIBUTING.md). GitHub cannot turn them off for a repository,
+# so this closes each one that does not come from the project's own people, with a note that
+# says why. It runs on `pull_request_target`, which has the token of the base repository, and
+# for that reason it checks out nothing and runs no code from the pull request: it only calls
+# the GitHub API with the number of the pull request.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    name: close the pull request
+    runs-on: ubuntu-24.04
+    if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: [
+                'Thank you for the time you took. veil does not take pull requests, patches or issues,',
+                'so this one is closed without review. It is a decision about the project, not about',
+                `you or your idea: see [CONTRIBUTING.md](https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md).`,
+                '',
+                'Reports of how veil works on your machine are welcome in',
+                `[Discussions, category "Reports"](https://github.com/${owner}/${repo}/discussions/categories/reports).`,
+              ].join('\n'),
+            });
+            await github.rest.pulls.update({
+              owner,
+              repo,
+              pull_number: issue_number,
+              state: 'closed',
+            });

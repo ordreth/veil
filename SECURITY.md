@@ -2,11 +2,11 @@
 
 ## Reporting a vulnerability
 
-Please report a vulnerability privately, through GitHub: on the repository's **Security** tab, **Report a vulnerability** ([direct link](https://github.com/ordreth/veil/security/advisories/new)). Do not post it in a public discussion.
+Please report a vulnerability privately, through GitHub: on the repository's **Security** tab, **Report a vulnerability** ([direct link](https://github.com/ordreth/veil/security/advisories/new)). Do not post it in a public discussion. If you cannot use GitHub, write to contact@ordreth.com with "veil security" in the subject; do not put the details of an unfixed problem in a public place.
 
 A useful report says:
 
-- the version (the first line of the daemon's log: `veil 0.1.0 (GStreamer 1.28.7)`) or the commit,
+- the version (the first line of the daemon's log: `veil 1.0.0-beta.1 (GStreamer 1.28.7)`) or the commit,
 - what an attacker needs: a process of another user, a file that someone shows as a wallpaper, a compositor, ...,
 - what they can do with it, and how to reproduce it (a file that triggers it, if there is one).
 
@@ -14,7 +14,7 @@ You will be told when the report has been read and what is planned. A fix is pub
 
 ## Supported versions
 
-veil has not been released yet. Fixes go to `main`; from 1.0 on, into a patch release of the latest version.
+veil is in beta (1.0.0-beta.1). Fixes go to `main` and into a new release; only the latest release gets them.
 
 ## Verifying a release
 
@@ -46,4 +46,4 @@ A client cannot block the daemon or make it exit: requests have a time limit (2 
 
 Report privately anything that lets someone do what the user did not allow: a process of another user getting the daemon to do anything, a file veil writes being readable by another user or written somewhere else, a request or a compositor answer that corrupts memory or runs code, a picture that gets past the size limits.
 
-Not a vulnerability: what the user's own processes can do through the socket (above), and the crash of known issue 1 (a monitor change while a video plays, [`docs/known-issues.md`](docs/known-issues.md)). A crash or hang from a malformed request or compositor answer that does none of the above is a bug: report it with the bug template.
+Not a vulnerability: what the user's own processes can do through the socket (above), and the crash of known issue 1 (a monitor change while a video plays, [`docs/known-issues.md`](docs/known-issues.md)). A crash or hang from a malformed request or compositor answer that does none of the above is a bug: report it in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports).

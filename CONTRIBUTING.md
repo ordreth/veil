@@ -1,6 +1,6 @@
 # Contributing
 
-veil is source-available under the [PolyForm Strict License 1.0.0](LICENSE) (see also [`ADDITIONAL-PERMISSIONS.md`](ADDITIONAL-PERMISSIONS.md)), and it does **not accept contributions**: no pull requests, no patches, no issues. This is a decision about the project, not about you or your idea. Pull requests are closed without review.
+veil is source-available under the [PolyForm Strict License 1.0.0](LICENSE) (see also [`ADDITIONAL-PERMISSIONS.md`](ADDITIONAL-PERMISSIONS.md)), and it does **not accept contributions**: no pull requests, no patches, no issues. This is a decision about the project, not about you or your idea. Pull requests are closed without review (a workflow does it).
 
 What is welcome:
 
