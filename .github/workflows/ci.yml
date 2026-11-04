@@ -45,7 +45,9 @@ jobs:
       # Ignored by a plain `cargo test`, because they need the tools of this
       # shell.
       - name: Headless sway tests
-        run: nix develop .#headless --command cargo test --test headless -- --ignored
+        # `nix develop` points TMPDIR into the runner's long work directory, and the
+        # sockets of sway do not fit in a path that long (tests/sway/mod.rs).
+        run: nix develop .#headless --command env TMPDIR=/tmp cargo test --test headless -- --ignored
 
   soak:
     name: soak tests (short)
