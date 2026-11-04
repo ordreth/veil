@@ -6,7 +6,7 @@ What is left before veil 1.0, and what is deliberately left for after it. Everyt
 
 ## The beta (1.0.0-beta.1)
 
-The first public release is a beta, and it relaxes the 1.0 checklist below. **Required before the tag:** CI green on the commit that becomes the public one; the checklist in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session", done by the maintainer, with what it finds fixed or recorded in [`known-issues.md`](known-issues.md) (on 2026-10-20 the pause behind a fullscreen window, images and video were run on Hyprland; the rest is open); and the release workflow run once, on a pre-release tag. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
+The first public release, 1.0.0-beta.1 (published on 2026-11-04), is a beta, and it relaxes the 1.0 checklist below. **Required, and done:** the release workflow run on the release tag itself. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the full checklist of [`manual-tests.md`](manual-tests.md), "In a real Hyprland session" (only part of it was run, see below), the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
 
 ## Before 1.0
 
@@ -16,9 +16,8 @@ Almost everything was checked in a headless sway; on Hyprland 0.56.2 only images
 
 ### The release workflow
 
-`.github/workflows/release.yml` has not run on GitHub yet (see [`manual-tests.md`](manual-tests.md), "The release tarball", for what was checked locally). Before 1.0:
+`.github/workflows/release.yml` ran on GitHub for the tag `v1.0.0-beta.1` (2026-11-04) and published the release as a pre-release with the x86_64 and aarch64 tarballs and `SHA256SUMS` (see [`manual-tests.md`](manual-tests.md), "The release tarball", for what was checked locally before). Before 1.0:
 
-- Push a pre-release tag (`v1.0.0-rc.1`), and check that it publishes both tarballs, `SHA256SUMS` and the attestations.
 - Run the aarch64 tarball on an ARM machine with a compositor: nothing has shown a picture or a video with it yet.
 - Confirm or change the decision of known issue 8 (animated GIFs and frame drops with the GStreamer of Debian 12 and Ubuntu 22.04 and 24.04: documented, not worked around).
 
