@@ -147,7 +147,8 @@ mod tests {
     fn padding_added_by_the_pool_is_cut_off() {
         // 1900x1009 at 4 bytes per pixel: the pool hands out 16 bytes too many.
         let mut canvas = vec![0u8; 7_668_416];
-        let exact = exact_canvas(&mut canvas, 1900 * 4, 1009).unwrap();
+        let exact =
+            exact_canvas(&mut canvas, 1900 * 4, 1009).expect("a canvas that is long enough");
         assert_eq!(exact.len(), 7_668_400);
     }
 
@@ -155,7 +156,9 @@ mod tests {
     fn an_exact_canvas_is_kept_whole() {
         let mut canvas = vec![0u8; 1920 * 1080 * 4];
         assert_eq!(
-            exact_canvas(&mut canvas, 1920 * 4, 1080).unwrap().len(),
+            exact_canvas(&mut canvas, 1920 * 4, 1080)
+                .expect("a canvas that is long enough")
+                .len(),
             1920 * 1080 * 4
         );
     }
