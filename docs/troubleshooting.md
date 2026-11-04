@@ -199,13 +199,13 @@ Reports go to [Discussions, category "Reports"](https://github.com/ordreth/veil/
 
 ## Support matrix
 
-What was run, where, and by whom. The labels: **Verified by owner** (the project owner ran it), **Reported working** (run once, by the project's tooling or a user, not yet confirmed by the owner), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below, which is the source of this one.
+What was run, where, and by whom. The labels: **Verified** (run and checked by the project), **Reported working** (run once, by the project's tooling or a user, not yet checked again), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below, which is the source of this one.
 
 | | Status | What, when |
 |---|---|---|
 | **Compositors** | | |
-| sway (headless, 1.12) | Verified by owner | Every check of `tests/headless.rs` and the measurements; 2026-10-19. |
-| Hyprland 0.56.2 | Reported working | Images, H.264 video on two monitors and the automatic pause, run on the owner's machine with an agent's help, 2026-10-20. Smoothness, lock, DPMS, logout and crash recovery are **Untested**. |
+| sway (headless, 1.12) | Verified | Every check of `tests/headless.rs` and the measurements; 2026-10-19. |
+| Hyprland 0.56.2 | Reported working | Images, H.264 video on two monitors and the automatic pause, 2026-10-20. Smoothness, lock, DPMS, logout and crash recovery are **Untested**. |
 | river, niri, Wayfire, labwc, other `wlr-layer-shell` compositors | Untested | Should work. No automatic pause (every video counts as visible), only the release of a video nobody is shown. |
 | KDE Plasma (KWin) | Untested | Has `wlr-layer-shell`; nobody has tried. |
 | GNOME (Mutter) | Unsupported | No `wlr-layer-shell`. |
@@ -218,7 +218,7 @@ What was run, where, and by whom. The labels: **Verified by owner** (the project
 | aarch64 | Untested | The release workflow builds it and runs the tests there; it was never run with a compositor. |
 | **Distributions** (the prebuilt tarball, in a headless sway) | | |
 | Debian 12 and 13, Ubuntu 22.04 and 24.04, Fedora 44, Arch Linux | Reported working | 2026-10-19. Animated GIFs need GStreamer 1.26 or newer, and Ubuntu 24.04 drops frames of 1080p videos ([known issue 8](known-issues.md)). |
-| NixOS (the flake) | Verified by owner | The owner's machine, 2026-10-20. |
+| NixOS (the flake) | Verified | `nix run` and `nix profile add`, with sway and Hyprland: images, video, and a daemon killed with `SIGKILL` replaced by the next one. 2026-10-20 and 2026-11-04. The overlay with `systemd.packages` of the [README](../README.md#installation) was not run on it. |
 
 What a user should know before using veil with several monitors and a video: a monitor that is changed, plugged in or switched on while a video plays crashes the daemon ([known issue 1](known-issues.md)); under the systemd unit it comes back within seconds.
 
@@ -230,7 +230,7 @@ What veil has been run on, and what worked. **Testers: please report a row** in 
 |---|---|---|---|---|---|---|---|
 | sway 1.12, headless, CPU rendering (`pixman`) | NVIDIA RTX 3060 Ti, 595.91.07 | yes | yes: H.264, HEVC, VP8, VP9, AV1 | `nvh264dec`, `nvh265dec`, `nvav1dec`, `nvvp8dec`, `nvvp9dec` (hardware); software ones when the hardware ones are taken out | yes (sway's IPC) | Where every check of `tests/headless.rs` and the measurements run. Known issue 1: a monitor change while a video plays kills the daemon. Frames are converted on the CPU (known issue 7). | veil 0.1.0, GStreamer 1.28.7, 2026-10-19 |
 | sway 1.12, headless, GPU rendering (`gles2`) | NVIDIA RTX 3060 Ti, 595.91.07 | not yet | not yet | | not yet | The sink pipeline of veil was run here with `gst-launch-1.0` (veil itself was not run): sway offers dmabufs, and takes NV12 ones only with NVIDIA's tiled modifiers. | |
-| Hyprland 0.56.2 | NVIDIA RTX 3060 Ti (the machine of the first row) | yes (the owner's daily wallpaper, through the systemd unit) | yes: H.264 1080p60 on two 1080p monitors at once | `nvh264dec` (hardware) | yes: a fullscreen window paused its output ("cannot be seen; pausing it"), closing it played again; the other output kept playing | About 90 to 99 % of one core for two 1080p60 streams (known issue 7), about 41 % with one output paused. Smoothness without lag (known issue 6), lock, DPMS, logout, crash recovery and a monitor change were not checked on Hyprland. The state veil reads from its IPC matches `hyprctl monitors`. | veil 0.1.0 (a release build of the tree), GStreamer 1.28.7, 2026-10-20 |
+| Hyprland 0.56.2 | NVIDIA RTX 3060 Ti (the machine of the first row) | yes (as the daily wallpaper, through the systemd unit) | yes: H.264 1080p60 on two 1080p monitors at once | `nvh264dec` (hardware) | yes: a fullscreen window paused its output ("cannot be seen; pausing it"), closing it played again; the other output kept playing | About 90 to 99 % of one core for two 1080p60 streams (known issue 7), about 41 % with one output paused. Smoothness without lag (known issue 6), lock, DPMS, logout, crash recovery and a monitor change were not checked on Hyprland. The state veil reads from its IPC matches `hyprctl monitors`. | veil 0.1.0 (a release build of the tree), GStreamer 1.28.7, 2026-10-20 |
 | sway, on hardware | any | not yet | not yet | | | | |
 | Hyprland | Intel or AMD (VA-API) | not yet | not yet | | | Would show whether the zero-copy path works (known issue 7, option A). | |
 | river, niri, Wayfire, labwc, KDE Plasma (wlr-layer-shell) | any | not yet | not yet | | no (pause only behind a locked screen or a monitor that is off) | Should work: veil needs `wlr-layer-shell`; `wp_viewporter` and `wp_fractional_scale_v1` are used when they are there. | |

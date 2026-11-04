@@ -102,7 +102,7 @@ A fix has to make `output_done` safe to call more than once per output. Replacin
 |---|---|---|
 | **A. Accept and document** | Nothing breaks that was not already broken. Images are fully robust. | *Chosen.* |
 | **B. Patch `gst-plugins-bad` in the Nix flake** | The crash disappears for Nix builds (dev shell and package). | GStreamer's plugin set is then compiled from source: a long first build locally and on every CI run without a binary cache. Other distributions still crash. Could be combined with the Nix wrapper. |
-| **C. Report the bug upstream** | A fix for everyone, eventually. | Declined for now by the project owner (2026-10-10). No existing upstream report was found at that time. |
+| **C. Report the bug upstream** | A fix for everyone, eventually. | Declined for now by the maintainer (2026-10-10). No existing upstream report was found at that time. |
 | **D. Restart after the crash** | The wallpaper comes back by itself within a second or two. | Needs a supervisor (the systemd unit with `Restart=on-failure`) and persistence of the last wallpaper, otherwise the restarted daemon shows the startup wallpaper. Both exist; together they are the cheapest real mitigation. A supervisor built into veil (a parent process that restarts a worker) would do the same without systemd, at the cost of process-management code. |
 | **E. Replace `waylandsink`** | Removes the bug and this whole class of dependency on `waylandsink` (see also issue 2). | Large: veil would attach video buffers itself (for example `appsink` plus DMABUF/SHM buffers on its own subsurface, or a GL path). It overlaps with the zero-copy investigation (entry 7), which is the natural place to decide it. |
 | **F. Work around it inside the process** | (nothing clean) | The only ways are reaching into GStreamer's private objects or interposing GLib symbols. Rejected as too fragile. |
@@ -200,7 +200,7 @@ A video pipeline runs about seven streaming threads, and every switch starts the
 
 Every locked session and every monitor that is switched off rebuilds a pipeline per output when it comes back, so the memory grows with daily use and not only with manual switches. The decision was therefore taken before the soak tests.
 
-### Decision (2026-10-16, the project owner)
+### Decision (2026-10-16, the maintainer)
 
 **C now, B only if the soak tests show that C is not enough.**
 
@@ -251,7 +251,7 @@ If the compositor reports no output name, the output cannot be recognised when i
 
 ## 5. A video that covers the whole surface stands still for a moment at every loop
 
-**Status:** not reproduced since 2026-10-16, with any build, also the one it was found with; kept open until the project owner has looked for it on Hyprland (`manual-tests.md`, "In a real Hyprland session"). Found on 2026-10-13, and older than that: the build before the error recovery was added behaved the same then.
+**Status:** not reproduced since 2026-10-16, with any build, also the one it was found with; kept open until the maintainer has looked for it on Hyprland (`manual-tests.md`, "In a real Hyprland session"). Found on 2026-10-13, and older than that: the build before the error recovery was added behaved the same then.
 **Affects:** videos in `fill` (the default) and `stretch`, and any mode in which the video happens to cover the surface completely. Not `fit` with bars or `center` with a border.
 **Last checked:** 2026-10-16, headless sway 1.12 (pixman renderer, frames through `wl_shm`), GStreamer 1.28.7: not there. **Not checked on Hyprland or on real hardware.**
 
@@ -299,11 +299,11 @@ In a headless sway as in entry 1, start `veil daemon --input clip.webm` with a s
 
 ## 6. Hyprland needs veil's surface committed on every frame while a video plays
 
-**Status:** worked around (the commit loop stays); the cause is not known. **Found:** 2026-10-16, by the project owner, in their Hyprland session, with a build that no longer committed the surface on every frame. **Affects:** any change to the frame-callback loop.
+**Status:** worked around (the commit loop stays); the cause is not known. **Found:** 2026-10-16, by the maintainer, in their Hyprland session, with a build that no longer committed the surface on every frame. **Affects:** any change to the frame-callback loop.
 
 ### Symptom
 
-A change stopped committing veil's own surface on every frame callback while a video plays, because `waylandsink` commits its own subsurfaces (they are desynchronized, GStreamer 1.28.7 `gstwlwindow.c`) and a headless sway showed the video correctly without those commits: the picture moved at 30 frames per second, placed as before, in `fill`, `fit` and `center`. On Hyprland the same build made the video "extremely laggy", and it looked "cut with multiple layers": parts of older frames on top of each other. It did not happen before the change. The loop was restored the same day, exactly as it was, and with it the video played smoothly again on Hyprland (checked by the project owner, 2026-10-16).
+A change stopped committing veil's own surface on every frame callback while a video plays, because `waylandsink` commits its own subsurfaces (they are desynchronized, GStreamer 1.28.7 `gstwlwindow.c`) and a headless sway showed the video correctly without those commits: the picture moved at 30 frames per second, placed as before, in `fill`, `fit` and `center`. On Hyprland the same build made the video "extremely laggy", and it looked "cut with multiple layers": parts of older frames on top of each other. It did not happen before the change. The loop was restored the same day, exactly as it was, and with it the video played smoothly again on Hyprland (checked by the maintainer, 2026-10-16).
 
 ### What is known
 
@@ -319,7 +319,7 @@ Keep the loop. Its cost is wake-ups, not CPU: in a headless sway, 160 to 175 wak
 
 When the cause is known, or if a later change alters how frames reach the screen (replacing `waylandsink`, after 1.0). Whatever is tried has to be checked on Hyprland, not only in a headless sway.
 
-Not tried: committing at the video's frame rate instead of on every frame callback (the fallback considered when the loop was measured). That work was closed on 2026-10-16 without it, by the project owner's decision, with its goal (wake-ups close to the video's frame rate) not met. It is after 1.0.
+Not tried: committing at the video's frame rate instead of on every frame callback (the fallback considered when the loop was measured). That work was closed on 2026-10-16 without it, by the maintainer's decision, with its goal (wake-ups close to the video's frame rate) not met. It is after 1.0.
 
 ## 7. A video costs CPU: its frames are converted to RGB on the CPU
 
@@ -386,7 +386,7 @@ The frames dropped on Ubuntu 24.04 are counted by its `waylandsink` (the decoder
 
 ### Decision (2026-10-19)
 
-C. The README lists the distributions the tarball was run on and points here; `troubleshooting.md` says how to turn a GIF into a WebM that plays everywhere. For the project owner to confirm or change.
+C. The README lists the distributions the tarball was run on and points here; `troubleshooting.md` says how to turn a GIF into a WebM that plays everywhere. For the maintainer to confirm or change.
 
 ### When to revisit
 

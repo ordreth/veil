@@ -6,13 +6,13 @@ What is left before veil 1.0, and what is deliberately left for after it. Everyt
 
 ## The beta (1.0.0-beta.1)
 
-The first public release is a beta, and it relaxes the 1.0 checklist below. **Required before the tag:** CI green on the commit that becomes the public one; the checklist in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session", done by the project owner, with what it finds fixed or recorded in [`known-issues.md`](known-issues.md) (on 2026-10-20 an agent ran the pause behind a fullscreen window, images and video on the owner's Hyprland; the rest is open); and the release workflow run once, on a pre-release tag. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
+The first public release is a beta, and it relaxes the 1.0 checklist below. **Required before the tag:** CI green on the commit that becomes the public one; the checklist in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session", done by the maintainer, with what it finds fixed or recorded in [`known-issues.md`](known-issues.md) (on 2026-10-20 the pause behind a fullscreen window, images and video were run on Hyprland; the rest is open); and the release workflow run once, on a pre-release tag. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
 
 ## Before 1.0
 
 ### Checks in a real Hyprland session
 
-Almost everything was checked in a headless sway; on Hyprland 0.56.2 only images, a video on two monitors and the pause behind a fullscreen window were run (2026-10-20, by an agent on the owner's machine). The checklist is in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session": the pause behind fullscreen windows, the lock screen and DPMS, whether a video in `fill` stands still at every loop (known issue 5), whether it plays smoothly (known issue 6), the systemd unit, crash recovery, logout, completions, and the Hyprland row of the compatibility table in [`troubleshooting.md`](troubleshooting.md#compatibility). A problem found there is fixed, or recorded as a known issue, before the release.
+Almost everything was checked in a headless sway; on Hyprland 0.56.2 only images, a video on two monitors and the pause behind a fullscreen window were run (2026-10-20). The checklist is in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session": the pause behind fullscreen windows, the lock screen and DPMS, whether a video in `fill` stands still at every loop (known issue 5), whether it plays smoothly (known issue 6), the systemd unit, crash recovery, logout, completions, and the Hyprland row of the compatibility table in [`troubleshooting.md`](troubleshooting.md#compatibility). A problem found there is fixed, or recorded as a known issue, before the release.
 
 ### The release workflow
 
@@ -40,6 +40,7 @@ All of these must be true for 1.0:
 ### Open decisions
 
 - **Known issue 1:** whether to report the `waylandsink` crash upstream after all. Not blocking.
+- **Other distributions and compositors:** veil is developed on NixOS and Hyprland, at the maintainer's own pace. Another system is looked at when people who use it show interest, not ahead of time ([Discussions, "Reports"](https://github.com/ordreth/veil/discussions/categories/reports)).
 - **The crate name:** `veil` is taken on crates.io; decided on 2026-10-19 not to publish there for 1.0.
 
 ## After 1.0

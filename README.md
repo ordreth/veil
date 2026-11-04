@@ -4,7 +4,7 @@
 
 **veil** is a wallpaper daemon for Wayland compositors with the layer-shell protocol (Hyprland, sway and other wlroots compositors). It shows a picture or a looping video on each monitor, can give every monitor a wallpaper of its own, pauses a video nobody can see, and brings back what each monitor showed after a restart. It is written in Rust, plays videos with GStreamer, and is controlled from the command line, a configuration file, or a socket that scripts and status bars can use.
 
-> **Status: beta (1.0.0-beta.1).** Free to use, source-available, not open source (see [License](#license)). What was run, where and when is in the [support matrix](docs/troubleshooting.md#support-matrix): the headless sway tests and the measurements on an NVIDIA card, and a first pass on Hyprland 0.56.2 (images, video, automatic pause). Not run: Intel and AMD cards, aarch64, other compositors, and on Hyprland the lock screen, DPMS, logout, crash recovery and a long soak. What is known to be wrong is under [Known limitations](#known-limitations).
+> **Status: beta (1.0.0-beta.1).** Free to use, source-available, not open source (see [License](#license)). What was run, where and when is in the [support matrix](docs/troubleshooting.md#support-matrix): the headless sway tests and the measurements on an NVIDIA card, a first pass on Hyprland 0.56.2 (images, video, automatic pause), and NixOS (`nix run` and `nix profile add`, with sway and Hyprland). Other distributions and compositors are looked at as people who use them show interest. Not run: Intel and AMD cards, aarch64, other compositors, and on Hyprland the lock screen, DPMS, logout, crash recovery and a long soak. What is known to be wrong is under [Known limitations](#known-limitations).
 
 ## Quick start
 
