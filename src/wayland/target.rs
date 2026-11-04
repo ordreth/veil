@@ -62,6 +62,19 @@ pub(super) struct SurfaceTarget<'a> {
     pub viewport: bool,
 }
 
+/// The first `stride * height` bytes of `canvas`, which is all a buffer holds.
+///
+/// The pool rounds every slot up (to a multiple of 64 bytes), so a canvas can be
+/// a few bytes longer than the buffer: 1900x1009 needs 7668400 bytes and gets
+/// 7668416. Engines refuse a canvas that is not exactly the size they draw, so
+/// the padding is cut off here. `None` if the canvas is too short.
+fn exact_canvas(canvas: &mut [u8], stride: i32, height: i32) -> Option<&mut [u8]> {
+    let len = usize::try_from(stride)
+        .ok()?
+        .checked_mul(usize::try_from(height).ok()?)?;
+    canvas.get_mut(..len)
+}
+
 impl SurfaceTarget<'_> {
     /// Lets `compose` fill one buffer of `size` pixels, then attaches it, damages
     /// the full rectangle and commits.
@@ -91,7 +104,7 @@ impl SurfaceTarget<'_> {
             .create_buffer(width, height, stride, wl_shm::Format::Xrgb8888)
             .map_err(|e| VeilError::BufferCreation(e.to_string()))?;
 
-        compose(canvas)?;
+        compose(exact_canvas(canvas, stride, height).ok_or_else(invalid)?)?;
 
         self.surface.attach(Some(buffer.wl_buffer()), 0, 0);
         self.surface.damage_buffer(0, 0, width, height);
@@ -123,5 +136,33 @@ impl RenderTarget for SurfaceTarget<'_> {
             display: self.display.ptr(),
             surface: self.surface.id().as_ptr().cast(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exact_canvas;
+
+    #[test]
+    fn padding_added_by_the_pool_is_cut_off() {
+        // 1900x1009 at 4 bytes per pixel: the pool hands out 16 bytes too many.
+        let mut canvas = vec![0u8; 7_668_416];
+        let exact = exact_canvas(&mut canvas, 1900 * 4, 1009).unwrap();
+        assert_eq!(exact.len(), 7_668_400);
+    }
+
+    #[test]
+    fn an_exact_canvas_is_kept_whole() {
+        let mut canvas = vec![0u8; 1920 * 1080 * 4];
+        assert_eq!(
+            exact_canvas(&mut canvas, 1920 * 4, 1080).unwrap().len(),
+            1920 * 1080 * 4
+        );
+    }
+
+    #[test]
+    fn a_canvas_that_is_too_short_is_refused() {
+        let mut canvas = vec![0u8; 100];
+        assert!(exact_canvas(&mut canvas, 40, 3).is_none());
     }
 }
