@@ -2,47 +2,26 @@
 //! [`RenderTarget`]. Buffer allocation, buffer sizes and every `wl_surface`
 //! request live here, so the engines only produce pixels.
 
-use std::mem::ManuallyDrop;
-use std::os::raw::c_void;
+use std::sync::Arc;
 
-use smithay_client_toolkit::shm::{slot::SlotPool, Shm};
+use smithay_client_toolkit::{
+    reexports::protocols::wp::viewporter::client::wp_viewporter::WpViewporter,
+    shm::{slot::SlotPool, Shm},
+    subcompositor::SubcompositorState,
+};
 use wayland_client::{
     protocol::{wl_shm, wl_surface::WlSurface},
-    Connection, Proxy,
+    Connection, QueueHandle,
 };
 
-use crate::engine::{Compose, RenderTarget, WindowHandle};
+use super::plane::Plane;
+use super::state::AppState;
+use crate::engine::{Compose, RenderTarget, VideoPlane};
 use crate::error::VeilError;
 use crate::scaling::Color;
 
 /// Bytes per `wl_shm` XRGB8888 pixel.
 const BYTES_PER_PIXEL: usize = 4;
-
-/// The connection to the compositor, kept open for as long as the process runs.
-/// It is the only source of the `wl_display*` an engine is given
-/// ([`WindowHandle::display`]).
-///
-/// `waylandsink` keeps that pointer, and reads the connection through it on a
-/// thread of its own, until the sink object is finalized. That is not a moment
-/// veil controls: GStreamer can hold the last reference to a pipeline on one of
-/// its threads for a moment after the engine was dropped, and finalize the sink
-/// there. No order of drops on veil's side can therefore promise that the
-/// display is still there, so it is never freed: this holds a clone of the
-/// connection that is not dropped, and libwayland disconnects only with the
-/// last one. The kernel closes the socket when the process ends; whoever
-/// leaves flushes the connection first.
-pub(super) struct PinnedDisplay(ManuallyDrop<Connection>);
-
-impl PinnedDisplay {
-    pub fn new(connection: &Connection) -> Self {
-        Self(ManuallyDrop::new(connection.clone()))
-    }
-
-    /// The `wl_display*` of the connection. It is valid until the process ends.
-    pub fn ptr(&self) -> *mut c_void {
-        self.0.backend().display_ptr().cast()
-    }
-}
 
 /// The layer surface as a place to draw on, for the duration of one engine call.
 ///
@@ -53,8 +32,12 @@ pub(super) struct SurfaceTarget<'a> {
     pub shm: &'a Shm,
     pub pool: &'a mut Option<SlotPool>,
     pub surface: &'a WlSurface,
-    /// The connection `surface` belongs to.
-    pub display: &'a PinnedDisplay,
+    /// What a video plane is made with: `None` if the compositor has no
+    /// `wl_subcompositor`.
+    pub subcompositor: Option<&'a SubcompositorState>,
+    pub viewporter: Option<&'a WpViewporter>,
+    pub qh: &'a QueueHandle<AppState>,
+    pub connection: &'a Connection,
     /// Buffer size in physical pixels: the surface's logical size times its scale.
     pub buffer: (u32, u32),
     /// Whether a `wp_viewport` stretches the buffer to the surface. A solid colour
@@ -131,11 +114,18 @@ impl RenderTarget for SurfaceTarget<'_> {
         self.present(size, &mut |canvas| compose(canvas, size))
     }
 
-    fn window(&self) -> WindowHandle {
-        WindowHandle {
-            display: self.display.ptr(),
-            surface: self.surface.id().as_ptr().cast(),
-        }
+    fn video_plane(&mut self) -> Result<Arc<dyn VideoPlane>, VeilError> {
+        let subcompositor = self.subcompositor.ok_or_else(|| {
+            VeilError::BufferCreation("the compositor has no wl_subcompositor".into())
+        })?;
+        Ok(Arc::new(Plane::new(
+            self.surface,
+            subcompositor,
+            self.viewporter,
+            self.shm.wl_shm(),
+            self.qh,
+            self.connection,
+        )))
     }
 }
 

@@ -1,31 +1,27 @@
-//! Video wallpapers: a GStreamer `playbin` that renders through `waylandsink` into
-//! a subsurface of the layer surface.
+//! Video wallpapers: a GStreamer `playbin` whose frames veil shows itself, in
+//! a subsurface of the layer surface (`sink::PlaneSink` and its
+//! [`VideoPlane`](crate::engine::VideoPlane)).
 //!
-//! # Limits of `waylandsink` that shape this module
+//! # Why not `waylandsink`
 //!
-//! Both were checked against GStreamer 1.28.7 and upstream `main` on 2026-10-10.
-//! `docs/known-issues.md` has the details, how to reproduce them, and the options
-//! that were considered.
+//! Until 1.0.0-beta.1 the frames went through GStreamer's `waylandsink`. It
+//! brought Wayland client code of its own onto veil's connection, which shaped
+//! this module (`docs/known-issues.md`, entries 1 and 2):
 //!
-//! 1. **One sink, one surface.** `waylandsink` cannot change its window handle and
-//!    keeps its window until it is finalized. [`Player`] therefore lives as long as
-//!    one surface: [`VideoEngine::detach`] drops it and the next `attach` builds a
-//!    new one.
-//! 2. **Output changes crash the process (upstream bug, not fixed here).**
-//!    `waylandsink` binds every `wl_output` on the shared display and handles
-//!    their events on its own thread. Its `output_done` handler takes the display
-//!    pointer with `g_object_steal_data`, so the *second* `done` event of any
-//!    output dereferences `NULL` and the process dies with SIGSEGV. A compositor
-//!    sends `done` after every change of an output (scale, mode, transform,
-//!    position), and sway also re-sends it for the remaining outputs when another
-//!    one is added, removed, enabled or disabled. Nothing in veil runs in between,
-//!    so it cannot be caught or avoided from here. What veil does: it keeps a sink
-//!    alive only while a video is actually on screen (`detach` when the surface is
-//!    lost), so nothing can crash while the wallpaper's output is away. Measured
-//!    in a headless sway: with a single output, disabling and enabling it works
-//!    (the pipeline is rebuilt); with two outputs, every change of either one
-//!    killed a playing video. The decision on 2026-10-10 was to accept and
-//!    document this, and to reconsider replacing `waylandsink` later.
+//! 1. **Output changes crashed the process.** It bound every `wl_output` and
+//!    handled their events on its own thread, and its `output_done` handler
+//!    dereferenced `NULL` on the second `done` event of any output (every
+//!    change of a monitor, also a monitor woken from DPMS). Nothing in veil
+//!    ran in between. The plane binds no output: veil's own code handles the
+//!    outputs, on the event loop.
+//! 2. **One sink, one surface.** It could not change its window. A pipeline
+//!    still serves one surface ([`Player`]: `detach` drops it and the next
+//!    `attach` builds a new one), but that is now a choice of this module and
+//!    no longer forced by the sink.
+//!
+//! The sink also does what `videoconvert ! videocrop` did in front of
+//! `waylandsink`, in one pass straight into the compositor's memory, and
+//! converts no pixel that is cropped away (`sink` module docs).
 
 use super::{Attached, EngineSignal, FrameCounts, RenderContext, StreamInfo, WallpaperEngine};
 use crate::error::VeilError;
@@ -34,29 +30,17 @@ use crate::scaling::{self, Rect, ScaleMode, ScaleOptions, SurfaceScale};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_video as gst_video;
-use gstreamer_video::prelude::*;
-use std::os::raw::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-/// Sink chain. `videocrop` sits right before `waylandsink`, which accepts
-/// `GstVideoCropMeta`: the crop is then only attached as metadata and applied by the
-/// compositor through the video subsurface's viewport, so no frame is copied.
-///
-/// `videoconvert` is what a video costs when the decoder's frames are in system
-/// memory in a format the compositor does not take (NV12 from NVDEC, which no
-/// compositor takes in `wl_shm`): it converts every frame to RGB on the CPU, and
-/// passes frames through untouched when the sink takes them as they are. Two
-/// threads, because one cannot convert 4K at 60 fps (measured: 45 to 51 frames
-/// a second with one, 60 with two, for about 1.5 points more of a core at 1080p).
-const SINK_BIN: &str = "videoconvert n-threads=2 ! videocrop name=vcrop ! waylandsink name=wsink";
+mod sink;
+use sink::PlaneSink;
 
 /// `playbin` flags: video only, and `native-video`, so that `playsink` puts no
-/// `videoconvert`, `videoscale` and `videobalance` of its own in front of the sink
-/// bin. The sink bin's `videoconvert` still converts what the sink cannot take,
-/// and the compositor scales (`docs/measurements.md`).
+/// `videoconvert`, `videoscale` and `videobalance` of its own in front of the
+/// sink. The sink converts and crops itself (`sink`); the compositor scales.
 const PLAYBIN_FLAGS: &str = "video+native-video";
 
 /// Size of the decoded video frames, as negotiated in the caps.
@@ -109,7 +93,7 @@ impl FrameSize {
     }
 }
 
-/// Pixels `videocrop` removes from each edge of a frame.
+/// Pixels the sink leaves out at each edge of a frame.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Crop {
     pub left: u32,
@@ -135,9 +119,9 @@ pub struct VideoLayout {
 ///
 /// The frame is placed on the surface's physical pixels, so `Center` maps one
 /// frame pixel to one device pixel (as it does for images). The render rectangle
-/// is then converted back to the logical pixels `waylandsink` positions its
-/// subsurface in. The compositor scales the frame straight to the physical size
-/// of that rectangle, so video needs no larger buffers on HiDPI outputs.
+/// is then converted back to the logical pixels the sink positions its plane
+/// in. The compositor scales the frame to the physical size of that
+/// rectangle, so video needs no larger buffers on HiDPI outputs.
 pub fn video_layout(
     mode: ScaleMode,
     frame: Option<FrameSize>,
@@ -195,124 +179,90 @@ struct LayoutState {
     /// Frames per second, from the same caps as `frame`. Only reported
     /// (`veil status`); the layout does not use it.
     frame_rate: Option<(u32, u32)>,
+    /// The layout computed from the fields above, which the sink shows its
+    /// frames with.
     applied: Option<VideoLayout>,
-    /// Who is told when the streaming thread moves the render rectangle: the
-    /// signal of the surface the pipeline is attached to (`start_on`).
+    /// Who is told when the sink moves its plane: the signal of the surface
+    /// the pipeline is attached to (`start_on`).
     signal: Option<EngineSignal>,
 }
 
-/// Applies the layout to `videocrop` and `waylandsink` whenever an input changes.
-/// It only holds weak references to the elements, so the caps handler that owns
-/// it does not keep the pipeline alive.
+/// The layout of a video, shared by the event loop (`attach`, `resize`) and the
+/// streaming thread (the frame size, and the sink, which reads it per frame).
 struct Geometry {
     state: Mutex<LayoutState>,
-    videocrop: gst::glib::WeakRef<gst::Element>,
-    waylandsink: gst::glib::WeakRef<gst::Element>,
 }
 
 impl Geometry {
-    /// Updates the inputs with `change` and pushes the resulting layout to the
-    /// elements if it differs from the last one applied. `force` re-applies anyway
-    /// (after `waylandsink` gets its window handle). Returns whether the render
-    /// rectangle was set anew.
-    fn update(&self, force: bool, change: impl FnOnce(&mut LayoutState)) -> bool {
-        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+    fn new(state: LayoutState) -> Self {
+        Self {
+            state: Mutex::new(state),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, LayoutState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Updates the inputs with `change` and computes the layout. Returns
+    /// whether it differs from the one before.
+    fn update(&self, change: impl FnOnce(&mut LayoutState)) -> bool {
+        let mut state = self.lock();
         change(&mut state);
-        if force {
-            state.applied = None;
-        }
-
-        let Some(surface) = state.surface else {
-            return false;
-        };
-        let Some(layout) = video_layout(state.mode, state.frame, surface, state.scale) else {
-            return false;
-        };
-        if state.applied == Some(layout) {
+        let layout = state
+            .surface
+            .and_then(|surface| video_layout(state.mode, state.frame, surface, state.scale));
+        if state.applied == layout {
             return false;
         }
-
-        if state.applied.map(|applied| applied.crop) != Some(layout.crop) {
-            if let Some(videocrop) = self.videocrop.upgrade() {
-                let crop = layout.crop;
-                for (edge, value) in [
-                    ("left", crop.left),
-                    ("right", crop.right),
-                    ("top", crop.top),
-                    ("bottom", crop.bottom),
-                ] {
-                    videocrop.set_property(edge, i32::try_from(value).unwrap_or(i32::MAX));
-                }
-            }
-        }
-
-        let moved = state.applied.map(|applied| applied.render) != Some(layout.render);
-        if let Some(overlay) = self
-            .waylandsink
-            .upgrade()
-            .and_then(|sink| sink.dynamic_cast::<gst_video::VideoOverlay>().ok())
-        {
-            let r = layout.render;
-            let to_i32 = |v: u32| i32::try_from(v).unwrap_or(i32::MAX);
-            if let Err(e) = overlay.set_render_rectangle(
-                to_i32(r.x),
-                to_i32(r.y),
-                to_i32(r.width),
-                to_i32(r.height),
-            ) {
-                tracing::warn!("failed to set the video render rectangle: {e}");
-            }
-        }
-
         tracing::debug!(
-            "video layout: frame {:?}, surface {surface:?}, scale {}, mode {:?} -> {layout:?}",
+            "video layout: frame {:?}, surface {:?}, scale {}, mode {:?} -> {layout:?}",
             state.frame,
+            state.surface,
             state.scale,
             state.mode
         );
-        state.applied = Some(layout);
-        moved
+        state.applied = layout;
+        true
     }
 
-    /// Tells the surface the pipeline is attached to that the render rectangle
-    /// was moved from the streaming thread. `waylandsink` places its subsurface
-    /// with `wl_subsurface.set_position`, which takes effect only when that
-    /// surface is committed, and nothing else commits it while a video plays.
+    /// The layout to show a frame with, and the scale of the surface.
+    fn current(&self) -> Option<(VideoLayout, SurfaceScale)> {
+        let state = self.lock();
+        Some((state.applied?, state.scale))
+    }
+
+    /// Tells the surface the pipeline is attached to that the sink moved its
+    /// plane, from the streaming thread. A subsurface is placed with
+    /// `wl_subsurface.set_position`, which takes effect only when its parent
+    /// is committed.
     fn report_move(&self) {
-        let signal = self
-            .state
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .signal
-            .clone();
+        let signal = self.lock().signal.clone();
         if let Some(signal) = signal {
             signal.moved();
         }
     }
 }
 
-/// Re-applies the layout when the caps reaching `videocrop` (the native frame size)
-/// are negotiated, which happens on the streaming thread before the first frame
-/// is rendered, and reports a render rectangle that moved (`Geometry::report_move`).
-fn watch_frame_size(videocrop: &gst::Element, geometry: &Arc<Geometry>) -> Result<(), VeilError> {
-    let crop_sink = videocrop
+/// Computes the layout anew when the caps reaching `sink` (the native frame
+/// size) are negotiated, which happens on the streaming thread before the
+/// first frame is shown.
+fn watch_frame_size(sink: &gst::Element, geometry: &Arc<Geometry>) -> Result<(), VeilError> {
+    let pad = sink
         .static_pad("sink")
-        .ok_or_else(|| VeilError::Gstreamer("videocrop has no sink pad".into()))?;
+        .ok_or_else(|| VeilError::Gstreamer("the video sink has no sink pad".into()))?;
     let geometry = Arc::clone(geometry);
-    crop_sink.connect_notify(Some("caps"), move |pad, _| {
+    pad.connect_notify(Some("caps"), move |pad, _| {
         let Some(caps) = pad.current_caps() else {
             return;
         };
         let frame = FrameSize::from_caps(&caps);
         if frame.is_some() {
             let frame_rate = FrameSize::frame_rate(&caps);
-            let moved = geometry.update(false, |state| {
+            geometry.update(|state| {
                 state.frame = frame;
                 state.frame_rate = frame_rate;
             });
-            if moved {
-                geometry.report_move();
-            }
         }
     });
     Ok(())
@@ -347,18 +297,18 @@ fn log_video_decoder(pipeline: &gst::Element) {
 
 /// One GStreamer pipeline, bound to at most one Wayland surface for its whole life.
 ///
-/// `waylandsink` cannot be moved to another surface: `set_window_handle` on a sink
-/// that already has a window only logs "changing window handle is not supported",
-/// and the sink keeps its window and its display connection until it is finalized,
-/// even in the `Null` state. So when the surface goes away (its output was
-/// unplugged) the whole player is dropped, and a new one is built for the next
-/// surface. This is not a loop: loops still seek and never rebuild the pipeline.
+/// When the surface goes away (its output was unplugged) the whole player is
+/// dropped, and a new one is built for the next surface, so a pipeline holds
+/// nothing while there is nothing to show it on. This is not a loop: loops
+/// still seek and never rebuild the pipeline.
 struct Player {
     pipeline: gst::Element,
-    waylandsink: gst::Element,
+    /// veil's `PlaneSink`; in the tests, which have no compositor, a
+    /// `fakesink`.
+    sink: gst::Element,
     geometry: Arc<Geometry>,
-    /// Whether `waylandsink` was given a window handle. Such a player cannot be
-    /// attached again.
+    /// Whether the sink was given a plane. Such a player is not attached
+    /// again.
     attached: bool,
     /// Whether the surface under the video has been filled with the video's
     /// background colour. Until then it is another wallpaper's.
@@ -404,45 +354,20 @@ impl Player {
         mode: ScaleMode,
         surface: Option<((u32, u32), SurfaceScale)>,
     ) -> Result<Self, VeilError> {
-        let sink_bin = gst::parse::bin_from_description(SINK_BIN, true)?;
-        let element = |name: &str| {
-            sink_bin
-                .by_name(name)
-                .ok_or_else(|| VeilError::Gstreamer(format!("element '{name}' not found in bin")))
-        };
-        let waylandsink = element("wsink")?;
-        let videocrop = element("vcrop")?;
+        let geometry = Arc::new(Geometry::new(LayoutState {
+            mode,
+            surface: surface.map(|(size, _)| size),
+            scale: surface.map(|(_, scale)| scale).unwrap_or_default(),
+            ..LayoutState::default()
+        }));
+        geometry.update(|_| {});
+        let sink = PlaneSink::new(Arc::clone(&geometry)).upcast::<gst::Element>();
 
-        // The crop and the render rectangle already keep (or deliberately drop) the
-        // aspect ratio, so the sink must scale to exactly the render rectangle.
-        // The property came with GStreamer 1.28, which keeps the aspect ratio by
-        // default; an older sink scales to the rectangle by itself (checked with
-        // 1.26.2: a 4:3 clip in `stretch` filled a 16:9 output).
-        if waylandsink.find_property("force-aspect-ratio").is_some() {
-            waylandsink.set_property("force-aspect-ratio", false);
-        } else {
-            tracing::debug!(
-                "this waylandsink has no force-aspect-ratio property (GStreamer before 1.28); \
-                 it scales to the render rectangle by itself"
-            );
-        }
-
-        let geometry = Arc::new(Geometry {
-            state: Mutex::new(LayoutState {
-                mode,
-                surface: surface.map(|(size, _)| size),
-                scale: surface.map(|(_, scale)| scale).unwrap_or_default(),
-                ..LayoutState::default()
-            }),
-            videocrop: videocrop.downgrade(),
-            waylandsink: waylandsink.downgrade(),
-        });
-
-        watch_frame_size(&videocrop, &geometry)?;
+        watch_frame_size(&sink, &geometry)?;
 
         let pipeline = gst::ElementFactory::make("playbin")
             .property("uri", uri)
-            .property("video-sink", &sink_bin)
+            .property("video-sink", &sink)
             .build()?;
 
         pipeline.set_property_from_str("flags", PLAYBIN_FLAGS);
@@ -450,7 +375,7 @@ impl Player {
 
         Ok(Self {
             pipeline,
-            waylandsink,
+            sink,
             geometry,
             attached: false,
             background_drawn: false,
@@ -499,10 +424,11 @@ impl Drop for Player {
         // Once more: the bus thread restarts a pipeline that failed, and may
         // have been in the middle of that when it was told to stop.
         let _ = self.pipeline.set_state(gst::State::Null);
+        // Nothing streams any more: the plane can leave the surface.
+        if let Some(sink) = self.sink.downcast_ref::<PlaneSink>() {
+            sink.detach();
+        }
         if let Some(bus) = self.pipeline.bus() {
-            // The sync handler carries the display pointer of the surface that
-            // is being given up.
-            bus.unset_sync_handler();
             // A flushing bus keeps no message. One that stays queued holds a
             // reference to the element that posted it, and the pipeline would
             // keep itself alive through its own bus. `Null` leaves the bus
@@ -721,8 +647,8 @@ impl Phase {
 
 /// What `sink` did with the frames since the video last started from its
 /// beginning: a sink counts what it rendered and what it dropped, and starts
-/// again from zero with every flushing seek (GStreamer 1.28). `waylandsink`
-/// counts as dropped a frame it replaced before the compositor took the one
+/// again from zero with every flushing seek (GStreamer 1.28). veil's sink
+/// counts as dropped a frame that came before the compositor took the one
 /// before. `None` if the sink keeps no such statistics.
 fn sink_counts(sink: &gst::Element) -> Option<FrameCounts> {
     sink.find_property("stats")?;
@@ -1057,7 +983,7 @@ impl VideoEngine {
     ) -> Result<&mut Player, VeilError> {
         let player = match self.player.take() {
             Some(player) if !player.attached => {
-                player.geometry.update(false, |state| {
+                player.geometry.update(|state| {
                     state.surface = Some(size);
                     state.scale = scale;
                 });
@@ -1070,125 +996,42 @@ impl VideoEngine {
     }
 }
 
-/// Type of the GStreamer context through which `waylandsink` is given the
-/// display of the application, in the field `handle`. GStreamer 1.28 reads
-/// `display` first and `handle` for backward compatibility (`gstwlcontext.c`);
-/// a field it cannot read makes the sink open a window of its own.
-const DISPLAY_CONTEXT: &str = "GstWaylandDisplayHandleContextType";
-
-/// The `wl_display*` of the surface a video is shown on, on its way to
-/// `waylandsink`. veil never dereferences it: it is only put into the context
-/// below, as the address it is.
-#[derive(Clone, Copy)]
-struct WlDisplayPtr(*mut c_void);
-
-// SAFETY: this type has no operation that reads through the pointer, so moving
-// it to another thread moves an address and nothing else. Who reads through it
-// is `waylandsink`, on GStreamer's threads, with libwayland's `wl_display`
-// functions, which may be called from any thread. The display it points to is
-// never freed while the process runs (see `WindowHandle::display`), so there is
-// no thread on which the address could outlive it.
-unsafe impl Send for WlDisplayPtr {}
-// SAFETY: as above. A shared reference gives the same address and still no way
-// to read through it. The bus sync handler needs this: GStreamer calls it from
-// whichever thread posts a message.
-unsafe impl Sync for WlDisplayPtr {}
-
-impl From<WlDisplayPtr> for gst::glib::Value {
-    fn from(ptr: WlDisplayPtr) -> Self {
-        Self::from(ptr.0)
-    }
-}
-
-/// The context that tells `waylandsink` which display its window is on.
-fn display_context(display: WlDisplayPtr) -> gst::Context {
-    let mut context = gst::Context::new(DISPLAY_CONTEXT, true);
-    // `make_mut` and not `get_mut`: a context that was just created has one
-    // owner and is written in place, and nothing here can fail.
-    context.make_mut().structure_mut().set("handle", display);
-    context
-}
-
 impl VideoEngine {
-    /// Puts the video's subsurface on the context's surface and lets the
-    /// pipeline produce its first frame there. The video does not play yet, and
-    /// the surface keeps the wallpaper it shows: the pipeline's bus thread
-    /// reports through `ctx.signal` when the frame is there, and `take_over`
-    /// does the rest. The surface itself gets `--bg-color`, because a
-    /// subsurface is only visible while its parent has a buffer, and the colour
-    /// shows through letterbox bars.
+    /// Puts the video's plane on the context's surface and lets the pipeline
+    /// produce its first frame there. The video does not play yet, and the
+    /// surface keeps the wallpaper it shows: the pipeline's bus thread reports
+    /// through `ctx.signal` when the frame is there, and `take_over` does the
+    /// rest. The surface itself gets `--bg-color`, because a subsurface is
+    /// only visible while its parent has a buffer, and the colour shows
+    /// through letterbox bars.
     fn start_on(&mut self, ctx: &mut RenderContext<'_>) -> Result<Attached, VeilError> {
-        let window = ctx.target.window();
-        if window.display.is_null() || window.surface.is_null() {
-            return Err(VeilError::Gstreamer(
-                "the render target has no Wayland surface for waylandsink".into(),
-            ));
-        }
-        let display = WlDisplayPtr(window.display);
+        let plane = ctx.target.video_plane()?;
         let bg_color = self.options.bg_color;
 
-        let player = self.fresh_player(ctx.size, ctx.scale)?;
-
-        player.pipeline.set_context(&display_context(display));
-
-        let bus = player
-            .pipeline
-            .bus()
-            .ok_or_else(|| VeilError::Gstreamer("Pipeline has no bus".into()))?;
-
-        // The sink asks for the display when it reaches `Ready`, if the context
-        // set on the pipeline did not get to it. The handler runs on the thread
-        // that posts the message.
-        bus.set_sync_handler(move |_, msg| {
-            use gst::MessageView;
-            if let MessageView::NeedContext(ctx) = msg.view() {
-                if ctx.context_type() == DISPLAY_CONTEXT {
-                    if let Some(src) = msg.src().and_then(|s| s.downcast_ref::<gst::Element>()) {
-                        src.set_context(&display_context(display));
-                    }
-                }
+        let player = match self.fresh_player(ctx.size, ctx.scale) {
+            Ok(player) => player,
+            Err(e) => {
+                plane.close();
+                return Err(e);
             }
-            gst::BusSyncReply::Pass
-        });
-
-        player.pipeline.set_state(gst::State::Ready)?;
-
-        let overlay = player
-            .waylandsink
-            .dynamic_cast_ref::<gst_video::VideoOverlay>()
-            .ok_or_else(|| {
-                VeilError::Gstreamer("waylandsink does not implement VideoOverlay".into())
-            })?;
-
-        // SAFETY: the handle must be a live `wl_surface*` on the display the sink
-        // was given, and the sink must not have a window yet. `window.surface` is
-        // the surface this engine is being attached to and was checked for null
-        // above; it belongs to `window.display`, the display of the context set
-        // on the pipeline, and it is alive until `detach` returns
-        // (`WindowHandle`), so for the whole of this call. `waylandsink` reads
-        // through the pointer only inside the call, where it makes its own
-        // subsurface under the surface and commits it (GStreamer 1.28.7,
-        // `gst_wl_window_new_in_surface`); it does not keep the pointer. This
-        // player has had no window before: `fresh_player` returns only one whose
-        // `attached` is false, and that is set right below.
-        unsafe {
-            overlay.set_window_handle(window.surface as usize);
-        }
+        };
+        let Some(sink) = player.sink.downcast_ref::<PlaneSink>() else {
+            plane.close();
+            return Err(VeilError::Gstreamer("the video has no plane sink".into()));
+        };
+        sink.attach(plane);
         player.attached = true;
 
-        // Geometry must be (re-)applied after the window handle is set in `Ready`.
-        // What the streaming thread changes later is reported to this surface.
+        // What the sink moves later is reported to this surface.
         let signal = ctx.signal.clone();
-        player
-            .geometry
-            .update(true, |state| state.signal = Some(signal));
+        player.geometry.update(|state| state.signal = Some(signal));
 
         // Started here and not with the pipeline, so only a pipeline that plays
         // has a thread, and the thread is started from the event loop thread. It
         // reports the first frame, or the error that prevents it.
         player.watch = Some(BusWatch::start(
             &player.pipeline,
-            Some(&player.waylandsink),
+            Some(&player.sink),
             Arc::clone(&player.wanted),
             ctx.signal.clone(),
             RestartPolicy::default(),
@@ -1204,7 +1047,7 @@ impl VideoEngine {
         }
 
         // `Paused`, not `Playing`: the pipeline opens the file, decodes one frame
-        // and shows it in its subsurface, above the previous wallpaper, and then
+        // and shows it in its plane, above the previous wallpaper, and then
         // waits. The answer comes on the bus, also when the state change is
         // refused at once (a file that cannot be opened): the element that
         // refuses says why in an error message, and the bus thread passes that
@@ -1218,7 +1061,7 @@ impl VideoEngine {
 
 impl WallpaperEngine for VideoEngine {
     /// Starts the video on the context's surface (see `start_on`). An attach
-    /// that fails keeps nothing: a pipeline that already has its window on the
+    /// that fails keeps nothing: a pipeline that already has its plane on the
     /// surface is dropped, with its sink and its bus thread.
     fn attach(&mut self, ctx: &mut RenderContext<'_>) -> Result<Attached, VeilError> {
         let attached = self.start_on(ctx);
@@ -1252,20 +1095,24 @@ impl WallpaperEngine for VideoEngine {
         let Some(player) = &self.player else {
             return Ok(());
         };
-        player.geometry.update(false, |state| {
+        let changed = player.geometry.update(|state| {
             state.surface = Some(ctx.size);
             state.scale = ctx.scale;
         });
+        if changed {
+            // A paused video gets no new frame that would show the new layout.
+            if let Some(sink) = player.sink.downcast_ref::<PlaneSink>() {
+                sink.refresh();
+            }
+        }
         if player.background_drawn {
             ctx.target.fill(self.options.bg_color)?;
         }
         Ok(())
     }
 
-    /// Drops the pipeline. This must happen before the surface is destroyed:
-    /// `waylandsink` holds subsurfaces of it and a raw pointer to it. Dropping the
-    /// sink also stops its Wayland event thread, so while there is no surface the
-    /// `output_done` crash described in the module docs cannot occur.
+    /// Drops the pipeline, and with it the plane, which is a subsurface of the
+    /// surface. This must happen before the surface is destroyed.
     fn detach(&mut self) {
         self.player = None;
     }
@@ -1294,7 +1141,7 @@ impl WallpaperEngine for VideoEngine {
         if !player.wanted.taken_over.load(Ordering::Acquire) {
             return None;
         }
-        sink_counts(&player.waylandsink)
+        sink_counts(&player.sink)
     }
 
     /// The frame size and rate, once the caps are negotiated.
@@ -1320,7 +1167,7 @@ impl WallpaperEngine for VideoEngine {
 mod tests {
     use super::*;
     use crate::engine::testing::FakeTarget;
-    use crate::engine::EngineReport;
+    use crate::engine::{EngineReport, PlaneCanvas, VideoPlane};
     use crate::scaling::Color;
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
@@ -1679,7 +1526,7 @@ mod tests {
     /// test is skipped) when a needed plugin is not installed.
     fn launch_or_skip(description: &str) -> Option<gst::Pipeline> {
         gst::init().expect("gstreamer init");
-        for factory in ["videotestsrc", "capsfilter", "videocrop", "fakesink"] {
+        for factory in ["videotestsrc", "valve", "fakesink"] {
             if gst::ElementFactory::find(factory).is_none() {
                 eprintln!("skipping: GStreamer element '{factory}' is not installed");
                 return None;
@@ -1689,109 +1536,206 @@ mod tests {
         Some(pipeline.downcast().expect("a pipeline"))
     }
 
+    /// A plane with no compositor behind it: it takes every frame at once,
+    /// and records what it was asked to do.
+    #[derive(Default)]
+    struct FakePlane {
+        /// Without `wp_viewporter`.
+        fixed_scale: bool,
+        allocated: Mutex<Vec<(u32, u32)>>,
+        shown: Mutex<Vec<Rect>>,
+        closed: AtomicBool,
+    }
+
+    impl VideoPlane for FakePlane {
+        fn allocate(&self, size: (u32, u32), count: usize) -> Result<Vec<PlaneCanvas>, VeilError> {
+            self.allocated.lock().expect("sizes").push(size);
+            let len = 4 * size.0 as usize * size.1 as usize;
+            Ok((0..count)
+                .map(|_| PlaneCanvas::new(Box::new(vec![0u8; len])))
+                .collect())
+        }
+
+        fn is_free(&self, _: usize) -> bool {
+            true
+        }
+
+        fn ready(&self) -> bool {
+            true
+        }
+
+        fn scales(&self) -> bool {
+            !self.fixed_scale
+        }
+
+        fn show(&self, _: usize, place: Rect) -> bool {
+            let mut shown = self.shown.lock().expect("shown");
+            let moved = shown.last() != Some(&place);
+            shown.push(place);
+            moved
+        }
+
+        fn close(&self) {
+            self.closed.store(true, Ordering::Release);
+        }
+    }
+
+    /// Plays three frames of `width` x `height` into a `PlaneSink` on a
+    /// surface of `surface` logical pixels at `scale` in `mode`, the way
+    /// `VideoEngine` builds it. Returns the plane, the geometry and what was
+    /// reported; `None` (the test is skipped) without the test source.
+    fn play_into_plane(
+        frame: (u32, u32),
+        mode: ScaleMode,
+        surface: (u32, u32),
+        scale: SurfaceScale,
+        plane: FakePlane,
+    ) -> Option<(Arc<FakePlane>, Arc<Geometry>, Vec<String>)> {
+        gst::init().expect("gstreamer init");
+        if gst::ElementFactory::find("videotestsrc").is_none() {
+            eprintln!("skipping: GStreamer element 'videotestsrc' is not installed");
+            return None;
+        }
+        let source = gst::ElementFactory::make("videotestsrc")
+            .property("num-buffers", 3)
+            .build()
+            .expect("videotestsrc");
+        let caps = gst::ElementFactory::make("capsfilter")
+            .property(
+                "caps",
+                gst_video::VideoCapsBuilder::new()
+                    .format(gst_video::VideoFormat::I420)
+                    .width(frame.0 as i32)
+                    .height(frame.1 as i32)
+                    .build(),
+            )
+            .build()
+            .expect("capsfilter");
+        let geometry = Arc::new(Geometry::new(LayoutState {
+            mode,
+            surface: Some(surface),
+            scale,
+            ..LayoutState::default()
+        }));
+        let (signal, reports) = signal();
+        // Laid out without a frame size first, as `attach` does.
+        assert!(geometry.update(|state| state.signal = Some(signal)));
+        let sink = PlaneSink::new(Arc::clone(&geometry));
+        watch_frame_size(sink.upcast_ref(), &geometry).expect("caps watch");
+        let plane = Arc::new(plane);
+        sink.attach(Arc::clone(&plane) as Arc<dyn VideoPlane>);
+
+        let pipeline = gst::Pipeline::new();
+        pipeline
+            .add_many([&source, &caps, sink.upcast_ref()])
+            .expect("add");
+        gst::Element::link_many([&source, &caps, sink.upcast_ref()]).expect("link");
+        pipeline.set_state(gst::State::Playing).expect("play");
+        let bus = pipeline.bus().expect("bus");
+        let msg = bus
+            .timed_pop_filtered(
+                gst::ClockTime::from_seconds(10),
+                &[gst::MessageType::Eos, gst::MessageType::Error],
+            )
+            .expect("pipeline finishes");
+        pipeline.set_state(gst::State::Null).expect("stop");
+        assert!(
+            matches!(msg.view(), gst::MessageView::Eos(_)),
+            "pipeline error: {msg:?}"
+        );
+        sink.detach();
+        Some((
+            plane,
+            geometry,
+            reports.try_iter().map(|r| format!("{r:?}")).collect(),
+        ))
+    }
+
     #[test]
     fn negotiated_caps_drive_the_crop() {
-        // No compositor: a test source feeds videocrop, the same caps watch as
-        // `VideoEngine` computes the layout, and fakesink receives the cropped frames.
-        let Some(pipeline) = launch_or_skip(
-            "videotestsrc num-buffers=3 ! video/x-raw,width=1920,height=1080 \
-             ! videocrop name=vcrop ! fakesink name=sink",
+        let Some((plane, geometry, _)) = play_into_plane(
+            (1920, 1080),
+            ScaleMode::Fill,
+            (2560, 1080),
+            SurfaceScale::ONE,
+            FakePlane::default(),
         ) else {
             return;
         };
-        let videocrop = pipeline.by_name("vcrop").expect("videocrop");
-        let sink = pipeline.by_name("sink").expect("fakesink");
-
-        let geometry = Arc::new(Geometry {
-            state: Mutex::new(LayoutState {
-                mode: ScaleMode::Fill,
-                surface: Some((2560, 1080)),
-                ..LayoutState::default()
-            }),
-            videocrop: videocrop.downgrade(),
-            // fakesink is no VideoOverlay; the render rectangle is simply skipped.
-            waylandsink: sink.downgrade(),
-        });
-        watch_frame_size(&videocrop, &geometry).expect("caps watch");
-
-        pipeline.set_state(gst::State::Playing).expect("play");
-        let bus = pipeline.bus().expect("bus");
-        let msg = bus
-            .timed_pop_filtered(
-                gst::ClockTime::from_seconds(10),
-                &[gst::MessageType::Eos, gst::MessageType::Error],
-            )
-            .expect("pipeline finishes");
-        assert!(
-            matches!(msg.view(), gst::MessageView::Eos(_)),
-            "pipeline error: {msg:?}"
-        );
-
-        let caps = sink
-            .static_pad("sink")
-            .and_then(|pad| pad.current_caps())
-            .expect("negotiated caps");
-        let info = gst_video::VideoInfo::from_caps(&caps).expect("video caps");
-        pipeline.set_state(gst::State::Null).expect("stop");
-
-        // `fill` of 16:9 on 21:9 keeps the full width and 810 of the 1080 rows.
-        assert_eq!((info.width(), info.height()), (1920, 810));
-        let state = geometry.state.lock().expect("state");
+        // `fill` of 16:9 on 21:9 keeps the full width and 810 of the 1080 rows,
+        // and only those are converted.
+        let state = geometry.lock();
         assert_eq!(state.frame, frame(1920, 1080, SQUARE));
         assert_eq!(state.applied.map(|l| l.crop), Some(crop(0, 0, 135, 135)));
-    }
-
-    /// The moves the caps watch reports for a 1920x1080 stream on a 2560x1080
-    /// surface in `mode`, after the layout was applied without a frame size, as
-    /// `VideoEngine::attach` does.
-    fn moves_reported(mode: ScaleMode) -> Option<Vec<String>> {
-        let pipeline = launch_or_skip(
-            "videotestsrc num-buffers=3 ! video/x-raw,width=1920,height=1080 \
-             ! videocrop name=vcrop ! fakesink name=sink",
-        )?;
-        let videocrop = pipeline.by_name("vcrop").expect("videocrop");
-        let sink = pipeline.by_name("sink").expect("fakesink");
-        let geometry = Arc::new(Geometry {
-            state: Mutex::new(LayoutState {
-                mode,
-                surface: Some((2560, 1080)),
-                ..LayoutState::default()
-            }),
-            videocrop: videocrop.downgrade(),
-            waylandsink: sink.downgrade(),
-        });
-        let (signal, reports) = signal();
-        // Applied on the event loop thread: not reported.
-        assert!(geometry.update(true, |state| state.signal = Some(signal)));
-        watch_frame_size(&videocrop, &geometry).expect("caps watch");
-
-        pipeline.set_state(gst::State::Playing).expect("play");
-        let bus = pipeline.bus().expect("bus");
-        let msg = bus
-            .timed_pop_filtered(
-                gst::ClockTime::from_seconds(10),
-                &[gst::MessageType::Eos, gst::MessageType::Error],
-            )
-            .expect("pipeline finishes");
-        pipeline.set_state(gst::State::Null).expect("stop");
-        assert!(
-            matches!(msg.view(), gst::MessageView::Eos(_)),
-            "pipeline error: {msg:?}"
+        assert_eq!(*plane.allocated.lock().expect("sizes"), [(1920, 810)]);
+        assert_eq!(
+            *plane.shown.lock().expect("shown"),
+            [Rect::new(0, 0, 2560, 1080); 3]
         );
-        Some(reports.try_iter().map(|r| format!("{r:?}")).collect())
+        assert!(plane.closed.load(Ordering::Acquire), "the plane stays open");
     }
 
     #[test]
-    fn a_frame_size_that_moves_the_picture_is_reported() {
-        // `fit` puts the 16:9 frame in the middle of the 21:9 surface: the
-        // subsurface moves, and the surface has to be committed for that.
-        let Some(moves) = moves_reported(ScaleMode::Fit) else {
+    fn a_frame_is_converted_at_its_own_size_and_scaled_by_the_compositor() {
+        // 4K on a 1080p surface: scaling on the CPU costs more than it saves.
+        let Some((plane, _, _)) = play_into_plane(
+            (3840, 2160),
+            ScaleMode::Fill,
+            (1920, 1080),
+            SurfaceScale::ONE,
+            FakePlane::default(),
+        ) else {
+            return;
+        };
+        assert_eq!(*plane.allocated.lock().expect("sizes"), [(3840, 2160)]);
+
+        // At scale 2 the place of a 1280x720 surface is 2560x1440 pixels; the
+        // frame keeps its 1920x1080.
+        let (plane, _, _) = play_into_plane(
+            (1920, 1080),
+            ScaleMode::Fill,
+            (1280, 720),
+            SurfaceScale::from_120ths(240),
+            FakePlane::default(),
+        )
+        .expect("the same elements");
+        assert_eq!(*plane.allocated.lock().expect("sizes"), [(1920, 1080)]);
+
+        // Without a viewport the compositor cannot scale: the buffer is the
+        // physical size of the place.
+        let (plane, _, _) = play_into_plane(
+            (1920, 1080),
+            ScaleMode::Fill,
+            (1280, 720),
+            SurfaceScale::from_120ths(240),
+            FakePlane {
+                fixed_scale: true,
+                ..FakePlane::default()
+            },
+        )
+        .expect("the same elements");
+        assert_eq!(*plane.allocated.lock().expect("sizes"), [(2560, 1440)]);
+    }
+
+    #[test]
+    fn the_sink_places_its_plane_once_and_reports_it() {
+        // `fit` puts the 16:9 frame in the middle of the 21:9 surface. The
+        // first frame places the plane, which needs a commit of the surface;
+        // the frames after it stay where it is.
+        let Some((plane, _, moves)) = play_into_plane(
+            (1920, 1080),
+            ScaleMode::Fit,
+            (2560, 1080),
+            SurfaceScale::ONE,
+            FakePlane::default(),
+        ) else {
             return;
         };
         assert_eq!(moves, ["Moved"]);
-        // `fill` covers the surface whatever the frame size: nothing moves.
-        let moves = moves_reported(ScaleMode::Fill).expect("the same elements");
-        assert!(moves.is_empty(), "{moves:?}");
+        assert_eq!(
+            *plane.shown.lock().expect("shown"),
+            [Rect::new(320, 0, 1920, 1080); 3]
+        );
     }
 
     /// Tests that start bus threads hold this: they count the threads of that
@@ -2025,11 +1969,7 @@ mod tests {
             .expect("playbin");
         pipeline.set_property_from_str("flags", PLAYBIN_FLAGS);
 
-        let geometry = Arc::new(Geometry {
-            state: Mutex::new(LayoutState::default()),
-            videocrop: gst::glib::WeakRef::new(),
-            waylandsink: sink.downgrade(),
-        });
+        let geometry = Arc::new(Geometry::new(LayoutState::default()));
         // In the order of `VideoEngine::attach`: the bus thread, then `Paused`.
         let (signal, reports) = signal();
         let wanted = Arc::new(Wanted::default());
@@ -2039,7 +1979,7 @@ mod tests {
         let _ = pipeline.set_state(gst::State::Paused);
         let player = Player {
             pipeline,
-            waylandsink: sink,
+            sink,
             geometry,
             attached: true,
             background_drawn: false,
@@ -2084,11 +2024,7 @@ mod tests {
 
     /// Makes the pipeline of `player` believe that one of its elements failed.
     fn inject_error(player: &Player) {
-        gst::element_error!(
-            player.waylandsink,
-            gst::CoreError::Failed,
-            ("injected by a test")
-        );
+        gst::element_error!(player.sink, gst::CoreError::Failed, ("injected by a test"));
     }
 
     /// Overwrites the file at `path` in place with bytes no demuxer recognises.
@@ -2208,7 +2144,7 @@ mod tests {
         };
         let (player, frames, _reports) = playing(&clip);
         wait_until("the video to play", || frames.load(Ordering::Relaxed) > 2);
-        let counts = sink_counts(&player.waylandsink).expect("a sink with statistics");
+        let counts = sink_counts(&player.sink).expect("a sink with statistics");
         // A sink nothing holds back renders what it gets.
         assert!(counts.rendered > 0, "{counts:?}");
         assert_eq!(counts.dropped, 0, "{counts:?}");
@@ -2832,7 +2768,7 @@ mod tests {
     fn a_pipeline_that_was_only_built_has_no_thread_and_is_freed() {
         let _counting = BUS_THREADS.lock().unwrap_or_else(PoisonError::into_inner);
         gst::init().expect("gstreamer init");
-        for factory in ["playbin", "videoconvert", "videocrop", "waylandsink"] {
+        for factory in ["playbin"] {
             if gst::ElementFactory::find(factory).is_none() {
                 eprintln!("skipping: GStreamer element '{factory}' is not installed");
                 return;
@@ -2859,7 +2795,7 @@ mod tests {
             .expect("post");
 
         let pipeline = player.pipeline.downgrade();
-        let sink = player.waylandsink.downgrade();
+        let sink = player.sink.downgrade();
         drop(player);
         assert!(pipeline.upgrade().is_none(), "the pipeline is still alive");
         assert!(sink.upgrade().is_none(), "the sink is still alive");
@@ -2868,7 +2804,7 @@ mod tests {
     #[test]
     fn a_pipeline_is_reused_until_it_has_a_window_and_rebuilt_after_detach() {
         gst::init().expect("gstreamer init");
-        for factory in ["playbin", "videoconvert", "videocrop", "waylandsink"] {
+        for factory in ["playbin"] {
             if gst::ElementFactory::find(factory).is_none() {
                 eprintln!("skipping: GStreamer element '{factory}' is not installed");
                 return;
@@ -2934,7 +2870,7 @@ mod tests {
     #[test]
     fn attach_needs_a_real_surface() {
         gst::init().expect("gstreamer init");
-        for factory in ["playbin", "videoconvert", "videocrop", "waylandsink"] {
+        for factory in ["playbin"] {
             if gst::ElementFactory::find(factory).is_none() {
                 eprintln!("skipping: GStreamer element '{factory}' is not installed");
                 return;
@@ -2951,7 +2887,7 @@ mod tests {
         std::fs::remove_file(&path).expect("remove test file");
         let mut engine = engine.expect("build the pipeline");
 
-        // A target without Wayland handles is refused before anything is touched:
+        // A target without a Wayland surface is refused before anything is touched:
         // nothing is drawn and the pipeline is still the unused one.
         let mut target = FakeTarget::new((1920, 1080));
         let err = engine
@@ -2961,7 +2897,7 @@ mod tests {
                 &mut target,
             ))
             .expect_err("no window");
-        assert!(matches!(err, VeilError::Gstreamer(_)), "{err:?}");
+        assert!(matches!(err, VeilError::BufferCreation(_)), "{err:?}");
         assert!(target.shown.is_empty());
         assert!(engine
             .player

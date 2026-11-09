@@ -25,8 +25,7 @@ After=graphical-session.target
 # Ready once every output shows its wallpaper (a video: its first frame).
 Type=notify
 ExecStart=/usr/bin/veil daemon
-# Comes back after a crash (GStreamer's waylandsink on a monitor change,
-# docs/known-issues.md entry 1) with the wallpapers it had: they are saved.
+# Comes back after a crash with the wallpapers it had: they are saved.
 Restart=on-failure
 RestartSec=2
 # Not after a command line or a configuration file that is wrong (2), a second

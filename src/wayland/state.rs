@@ -1,6 +1,7 @@
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm,
+    delegate_subcompositor,
     output::{OutputHandler, OutputState},
     reexports::protocols::wp::{
         fractional_scale::v1::client::{
@@ -16,6 +17,7 @@ use smithay_client_toolkit::{
         WaylandSurface,
     },
     shm::{Shm, ShmHandler},
+    subcompositor::SubcompositorState,
 };
 use wayland_client::{
     delegate_noop,
@@ -32,7 +34,7 @@ use super::scale::ScaleInputs;
 use super::screen::{OutputSurface, Screen};
 use super::size::{self, OutputSize};
 use super::surface::{self, ScaleGlobals};
-use super::target::{PinnedDisplay, SurfaceTarget};
+use super::target::SurfaceTarget;
 use super::unseen::StallWatch;
 use crate::engine::image::ImageEngine;
 use crate::engine::{RenderTarget, ReportSink, Source};
@@ -51,10 +53,10 @@ pub struct AppState {
     pub shm: Shm,
     pub layer_shell: LayerShell,
     pub scale_globals: ScaleGlobals,
+    /// Makes the subsurfaces videos are shown in; `None` if the compositor
+    /// has no `wl_subcompositor`.
+    pub subcompositor: Option<SubcompositorState>,
     pub conn: Connection,
-    /// Where the `wl_display*` for a video sink comes from. It keeps the
-    /// connection open until the process ends, whatever is dropped when.
-    pub(super) display: PinnedDisplay,
     /// One per output the daemon draws on, with its wallpaper, and its surface
     /// while the output is there. A named output keeps its screen while it is
     /// unplugged.
@@ -202,9 +204,10 @@ impl Drop for AppState {
             self.release_surface(&key);
         }
         self.wait_for_retired_engines();
-        // The connection is not closed by veil (`PinnedDisplay`), so what is
-        // still buffered has to be sent here. It fails if the compositor is
-        // gone, and then nobody is left to read it.
+        // Engines that are still being shut down on other threads hold
+        // Wayland objects, and with them the connection: what is buffered is
+        // sent here. It fails if the compositor is gone, and then nobody is
+        // left to read it.
         let _ = self.conn.flush();
     }
 }
@@ -470,7 +473,9 @@ impl AppState {
         key: &OutputKey,
         op: impl FnOnce(&mut RenderState, Option<&mut dyn RenderTarget>) -> R,
     ) -> Option<R> {
-        let (shm, display, qh) = (&self.shm, &self.display, &self.qh);
+        let (shm, qh, connection) = (&self.shm, &self.qh, &self.conn);
+        let subcompositor = self.subcompositor.as_ref();
+        let viewporter = self.scale_globals.viewporter();
         let Screen {
             render, surface, ..
         } = self.screens.iter_mut().find(|screen| &screen.key == key)?;
@@ -486,7 +491,10 @@ impl AppState {
             shm,
             pool: &mut surface.pool,
             surface: &wl_surface,
-            display,
+            subcompositor,
+            viewporter,
+            qh,
+            connection,
             buffer,
             viewport,
         };
@@ -496,7 +504,7 @@ impl AppState {
             // The frame-callback loop: it commits at the next frame if it runs.
             request_frame(qh, surface, &wl_surface);
         } else if render.video_attached() {
-            // `waylandsink` places its subsurface with `wl_subsurface.set_position`,
+            // The video plane is placed with `wl_subsurface.set_position`,
             // which is state of this surface and takes effect with a commit of it
             // (a paused video, or one that waits to replace an image).
             wl_surface.commit();
@@ -860,5 +868,6 @@ impl ProvidesRegistryState for AppState {
 delegate_compositor!(AppState);
 delegate_output!(AppState);
 delegate_shm!(AppState);
+delegate_subcompositor!(AppState);
 delegate_layer!(AppState);
 delegate_registry!(AppState);

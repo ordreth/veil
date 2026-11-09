@@ -44,7 +44,7 @@ The failures below were produced on purpose in a headless sway 1.12 with GStream
 | `stopped while the compositor does not show it` | Nobody is shown the video right now. | Nothing: it plays again when the output is drawn again. `--release-unseen-after 0` turns this off. |
 | `showing` or `playing`, and the frame counts go up, but something else is on screen | Another program draws on the same layer: another wallpaper daemon (`swaybg`, `hyprpaper`, `swww`, `mpvpaper`, ...). In sway, the one started last is on top, and a later `veil set` does not change that (seen with `swaybg` 1.2.2). | Stop the other program, or remove it from the compositor's configuration (sway starts `swaybg` for an `output * bg ...` line). |
 
-**For developers: a video needs a buffer under it.** `waylandsink` draws the video into a subsurface of veil's surface, and a subsurface is shown only when its parent surface is mapped, that is, has a buffer attached and committed. veil puts the video's background colour under every video (`RenderTarget::fill`). A build that leaves the buffer out shows the compositor's background where the video should be: tried with the three `fill` calls of `engine/video.rs` removed, the screen showed sway's own background colour, nothing moved, the sink counted every frame as dropped, and two seconds later `veil status` said `stopped while the compositor does not show it`.
+**For developers: a video needs a buffer under it.** veil shows a video in a subsurface of its surface (`wayland::plane`), and a subsurface is shown only when its parent surface is mapped, that is, has a buffer attached and committed. veil puts the video's background colour under every video (`RenderTarget::fill`). A build that leaves the buffer out shows the compositor's background where the video should be: tried with the three `fill` calls of `engine/video.rs` removed, the screen showed sway's own background colour, nothing moved, the sink counted every frame as dropped, and two seconds later `veil status` said `stopped while the compositor does not show it`.
 
 ## A video does not play: a GStreamer element is missing
 
@@ -52,9 +52,7 @@ veil builds every video pipeline from GStreamer elements found at run time. If o
 
 | The log or `veil set` says | Missing | In the plugin set |
 |---|---|---|
-| `Internal GLib/GStreamer error: no element "waylandsink"` | the video sink | `gst-plugins-bad` |
-| `Internal GLib/GStreamer error: no element "videoconvert"` | the converter | `gst-plugins-base` (or [a stale registry](#a-stale-gstreamer-registry), or [plugins of another GStreamer](#plugins-of-another-gstreamer-version)) |
-| `Internal GLib/GStreamer error: no element "videocrop"` | the crop of `fill` | `gst-plugins-good` |
+| `Internal GLib/GStreamer error: no element "playbin"` | the player | `gst-plugins-base` (or [a stale registry](#a-stale-gstreamer-registry), or [plugins of another GStreamer](#plugins-of-another-gstreamer-version)) |
 | `GStreamer pipeline error: the video cannot be played: Your GStreamer installation is missing a plug-in.`, after a warning `No decoder available for type 'video/webm'` | a demuxer or a decoder for this file | see below |
 
 The type in the warning says which: `video/webm` and `video/x-matroska` need `matroskademux`, `video/quicktime` (MP4, MOV) `qtdemux`, both from `gst-plugins-good`; VP8 and VP9 are decoded by `gst-plugins-good` (`vp8dec`, `vp9dec`), H.264 and HEVC in software by `gst-libav` (`avdec_h264`, `avdec_h265`); `image/gif` (an animated GIF) needs `gst-libav` (`avdemux_gif`, `avdec_gif`). Hardware decoders come from `gst-plugins-bad` (`va`, `nvcodec`) and need a driver (see [No hardware decoding](#no-hardware-decoding)). The package names on Arch, Debian, Ubuntu and Fedora are in the README ([From source](../README.md#from-source)); Fedora's own `gst-libav` has no H.264 or HEVC decoder (`openh264dec` decodes H.264 there).
@@ -62,15 +60,15 @@ The type in the warning says which: `video/webm` and `video/x-matroska` need `ma
 What happens then:
 
 * `veil set --input FILE`: it prints the error and exits with status 1; the wallpaper on screen stays.
-* `veil daemon --input FILE`: a missing `waylandsink`, `videoconvert` or `videocrop` stops the daemon (status 1, with a desktop notification). A missing demuxer or decoder does not: the daemon runs, the output shows the background colour and `veil status` says `stopped after an error`.
-* Images do not go through GStreamer: a daemon without `gst-plugins-bad` showed a picture as usual.
+* `veil daemon --input FILE`: a missing `playbin` stops the daemon (status 1, with a desktop notification). A missing demuxer or decoder does not: the daemon runs, the output shows the background colour and `veil status` says `stopped after an error`.
+* Images do not go through GStreamer: a daemon without `gst-plugins-bad` showed a picture as usual. Videos need `gst-plugins-bad` only for the hardware decoders; veil's video sink and converter are its own and `gst-plugins-base`'s.
 
 **With the Nix package** all of these come with it (`base`, `good`, `bad`, `libav`; the package's `plugins` check looks up every element veil uses). A missing element there means a stale registry or plugins of another GStreamer on `GST_PLUGIN_PATH` (the next two sections).
 
 **On other distributions**, install the plugin sets. Their packages are usually named after them: `gst-plugins-bad` (Arch), `gstreamer1.0-plugins-bad` (Debian, Ubuntu), `gstreamer1-plugins-bad-free` (Fedora), and the same for `base`, `good` and `libav` (not checked on those distributions). Check with GStreamer's own tool, which sees the same plugins as veil:
 
 ```bash
-gst-inspect-1.0 waylandsink videoconvert videocrop > /dev/null && echo "all there"
+gst-inspect-1.0 playbin matroskademux qtdemux > /dev/null && echo "all there"
 gst-inspect-1.0 --exists avdec_h264 || echo "no software H.264 decoder"
 ```
 
@@ -141,14 +139,6 @@ GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvvp9dec:0,nvav1dec:0 veil daemo
 
 Measured: `nvh264dec:0` (or `nvh264dec:NONE`) and the H.264 clip was decoded by `avdec_h264 (software)`; `nvvp9dec:0` and the VP9 clip by `vp9dec (software)`. Under systemd, `systemctl --user edit veil` and add `Environment=GST_PLUGIN_FEATURE_RANK=nvh264dec:0` under `[Service]`. The variable is read when the daemon starts; it does not change the registry. (A decoder option of veil's own is planned after 1.0, see [`roadmap.md`](roadmap.md).)
 
-## A video opens in a window of its own
-
-**Symptom:** a normal window (in sway: tiled, with a title bar, its `app_id` the program's name) plays the video, and the wallpaper itself shows only its background colour.
-
-**Cause:** `waylandsink` did not get veil's Wayland connection, so it opened its own and made a window there. veil hands the connection to it in a GStreamer context of the type `GstWaylandDisplayHandleContextType` (`engine::video::display_context`), with the display pointer in the field `handle`. GStreamer 1.28.7 reads the field `display` first and `handle` "for backward compatibility" (`gst-libs/gst/wayland/gstwlcontext.c`); in a test both names worked, and a field of another name gave exactly this window. veil keeps `handle`, the field GStreamer keeps reading for compatibility (which field versions before 1.28 read was not checked).
-
-This does not happen with veil as it is released. If you see it, report it with the GStreamer version (the first line of the log) and a log with `GST_DEBUG=waylandsink:5`.
-
 ## An output name is not found
 
 Output names are the compositor's (`DP-3`, `HDMI-A-1`, `eDP-1`, ...), and they are case-sensitive. `veil outputs` lists the outputs the compositor has and which ones the daemon draws on; `hyprctl monitors` and `swaymsg -t get_outputs` give the same names.
@@ -166,11 +156,10 @@ An output that has no name (rare: a compositor that does not send `wl_output.nam
 
 | Message | Meaning |
 |---|---|
-| `GStreamer-Wayland-WARNING **: Could not bind to zwp_linux_dmabuf_v1` | The compositor offers no dmabufs (a headless sway that renders on the CPU, for instance). Frames go through shared memory; nothing else changes. |
 | `XDG_RUNTIME_DIR is not set to an absolute path; veil keeps its control socket there` | Not in a normal desktop session. Start veil from the session (or its systemd user manager). |
 | `veil daemon` exits with status 4 | A daemon already runs for this compositor. `veil quit` stops it. |
 | `Lost the connection to the Wayland compositor`, status 5 | The compositor exited or crashed. veil does not reconnect; the next session starts it again. |
-| The daemon dies with SIGSEGV (status 139) when a monitor is changed, plugged in or powered on while a video plays | Known issue 1, a bug in GStreamer's `waylandsink`. Run veil under its systemd unit: it is back within about three seconds with its wallpapers. |
+| The daemon dies with SIGSEGV (status 139) when a monitor is changed, plugged in or powered on while a video plays | Known issue 1, fixed after 1.0.0-beta.1 (veil no longer uses GStreamer's `waylandsink`). With 1.0.0-beta.1, run veil under its systemd unit: it is back within about three seconds with its wallpapers. |
 | A configuration file error, status 2 | The message has the file, line and column. `veil config check` says the same without a daemon. |
 
 ## Debug cheat-sheet
@@ -184,11 +173,10 @@ An output that has no name (rare: a compositor that does not send `wl_output.nam
 | The log under systemd | `journalctl --user -u veil -f` |
 | More from veil: each load, switch, pause and what the compositor reports | `RUST_LOG=veil=debug veil daemon` |
 | Everything, also the libraries veil uses | `RUST_LOG=debug veil daemon` |
-| The video sink: buffers, the window, the render rectangle | `GST_DEBUG=waylandsink:5 veil daemon` |
+| The video sink: the layout, and what each frame is converted to (`video converter: 3840x2160 Nv12, crop ..., to 1920x1080 XRGB8888`) | `RUST_LOG=veil::engine::video=debug veil daemon` |
 | Which file every GStreamer plugin is loaded from, and which fail | `GST_DEBUG=GST_PLUGIN_LOADING:4 veil daemon` |
-| Whether `videocrop` crops without a copy (`in-place transform using crop meta`) | `GST_DEBUG=videocrop:5 veil daemon --mode fill` |
 | A GStreamer log in a file of its own | `GST_DEBUG_FILE=/tmp/gst.log` with any of the `GST_DEBUG` lines |
-| Every Wayland request and event (`{GStreamer display queue}` lines are the video sink's) | `WAYLAND_DEBUG=1 veil daemon` |
+| Every Wayland request and event (a video's are on a `wl_surface` made with `wl_subcompositor.get_subsurface`) | `WAYLAND_DEBUG=1 veil daemon` |
 | Take a hardware decoder out | `GST_PLUGIN_FEATURE_RANK=nvh264dec:0 veil daemon` |
 | A fresh GStreamer registry, to rule out a stale one | `GST_REGISTRY=/tmp/veil-registry.bin veil daemon` |
 | Under systemd | `systemctl --user edit veil`, then `Environment=RUST_LOG=veil=debug` (or any variable above) under `[Service]`, and `systemctl --user restart veil` |

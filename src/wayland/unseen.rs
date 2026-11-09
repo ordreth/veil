@@ -1,12 +1,12 @@
 //! Whether the compositor still shows the video of a surface.
 //!
-//! `waylandsink` hands a frame to the compositor only once the compositor has
-//! answered the frame callback of the frame before. A compositor answers when
-//! it draws the surface, and does not while it does not: while the session is
-//! locked, while the output is powered off, and (sway) while a window covers
-//! the video completely. The sink then replaces every new frame with the next
-//! and counts it as dropped (GStreamer 1.28.7, `gst_wl_window_render_hdr`
-//! returns false, and `waylandsink` reports `GST_BASE_SINK_FLOW_DROPPED`). So
+//! veil's video sink (`engine::video::sink`) hands a frame to the compositor
+//! only once the compositor has answered the frame callback of the frame
+//! before, as `waylandsink` did. A compositor answers when it draws the
+//! surface, and does not while it does not: while the session is locked,
+//! while the output is powered off, and (sway) while a window covers the video
+//! completely. The sink then drops every new frame and counts it as dropped
+//! (`GST_BASE_SINK_FLOW_DROPPED`, in the `stats` of `basesink`). So
 //! frames that are dropped while hardly any is rendered mean that nobody sees
 //! the video; frames that are neither (a video of one frame, a slide show)
 //! mean nothing.

@@ -621,6 +621,15 @@ impl Daemon {
             .count()
     }
 
+    /// The names of the daemon's threads.
+    pub fn thread_names(&self) -> Vec<String> {
+        std::fs::read_dir(self.proc("task"))
+            .expect("the daemon's threads")
+            .filter_map(|task| std::fs::read_to_string(task.ok()?.path().join("comm")).ok())
+            .map(|name| name.trim().to_string())
+            .collect()
+    }
+
     /// The daemon's open file descriptors.
     pub fn fds(&self) -> usize {
         std::fs::read_dir(self.proc("fd"))

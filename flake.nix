@@ -85,7 +85,7 @@
             chmod +x inspect
             unset GST_PLUGIN_SYSTEM_PATH_1_0 GST_REGISTRY GST_REGISTRY_1_0
             export XDG_CACHE_HOME="$TMPDIR/cache"
-            for element in playbin videoconvert videocrop waylandsink \
+            for element in playbin \
                 matroskademux qtdemux avdemux_gif avdec_gif avdec_h264 vp8dec vp9dec; do
               ./inspect --exists "$element" || { echo "missing element: $element"; exit 1; }
             done

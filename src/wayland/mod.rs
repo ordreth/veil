@@ -1,6 +1,7 @@
 pub mod answers;
 pub mod binding;
 mod control;
+mod plane;
 pub mod queue;
 pub mod render;
 mod report;
@@ -22,7 +23,7 @@ use calloop::{
 use calloop_wayland_source::WaylandSource;
 use smithay_client_toolkit::{
     compositor::CompositorState, output::OutputState, registry::RegistryState,
-    shell::wlr_layer::LayerShell, shm::Shm,
+    shell::wlr_layer::LayerShell, shm::Shm, subcompositor::SubcompositorState,
 };
 use wayland_client::{globals::registry_queue_init, Connection};
 
@@ -40,7 +41,6 @@ use control::SetRequests;
 use retire::Retirements;
 use state::{AppState, Startup};
 use surface::ScaleGlobals;
-use target::PinnedDisplay;
 
 /// Runs the daemon with `settings` (its command line over its configuration
 /// file): a wallpaper on each of `settings.outputs` (every output if it is
@@ -124,6 +124,14 @@ pub fn run(settings: Settings) -> Result<(), VeilError> {
     let layer_shell =
         LayerShell::bind(&globals, &qh).map_err(|e| VeilError::SctkGlobal(e.to_string()))?;
     let scale_globals = ScaleGlobals::bind(&globals, &qh);
+    // Videos are shown in subsurfaces. Every compositor has the global; one
+    // without it can still show pictures.
+    let subcompositor =
+        SubcompositorState::bind(compositor_state.wl_compositor().clone(), &globals, &qh)
+            .inspect_err(|e| {
+                tracing::warn!("compositor has no wl_subcompositor ({e}); videos cannot be shown")
+            })
+            .ok();
 
     // Loader threads deliver the wallpapers they have loaded through this
     // channel; the loop switches to them in `load_finished`.
@@ -140,8 +148,8 @@ pub fn run(settings: Settings) -> Result<(), VeilError> {
         shm,
         layer_shell,
         scale_globals,
+        subcompositor,
         conn: conn.clone(),
-        display: PinnedDisplay::new(&conn),
         screens: Vec::new(),
         binding: OutputBinding::new(outputs.clone()),
         exit: false,

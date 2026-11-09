@@ -225,6 +225,25 @@ They agree with the table above (shipped column: 18.7 to 20.0 %, 36.2 to 38.9 %,
 
 **A first session the same day was thrown out.** The desktop's browser used 9 to 11 of the 12 CPU threads during it (load 12.8, found with `top` after the runs). Its 1080p runs agreed with the table above (18.2, 35.5 and 38.6 %), but the runs that need several cores did not: hardware 4K at 153.6 %, software 1080p at 27.5 %, software 4K at 221.4 %. The table is from a second session with the machine 92 % idle (the desktop running, as in the earlier runs). A bench run says nothing about the machine's load; check `uptime` before and after a run.
 
+## veil's own sink (2026-11-09, headless sway)
+
+`waylandsink` was replaced by a sink of veil's own (`known-issues.md`, entry 1). Both builds were measured the same afternoon, alternating: "before" is commit `1c5d63b` (1.0.0-beta.1 and fixes), "after" the working tree with the new sink. `bench.sh --duration 30`, `fill`, one 1920x1080 output, `MALLOC_ARENA_MAX=1`. **Another machine than the reference one above**: Intel Core i7-13620H (16 threads), an NVIDIA GeForce RTX 4050 Laptop GPU (the `nvcodec` decoders) and an Intel GPU (VA-API; "VA-API" in the table is `GST_PLUGIN_FEATURE_RANK=nvh264dec:0`, which picked `vah264dec`, not a software decoder). Load average about 2 during the runs.
+
+| Clip, decoder | CPU before / after | Frames per s before / after | Wake-ups per s before / after | RSS before / after |
+|---|---|---|---|---|
+| `h264-1080p30.mp4`, `nvh264dec` | 40.9 / 41.7 % | 29.9 / 30.0 | 85.2 / 33.8 | 157.5 / 183.4 MiB |
+| `h264-1080p60.mp4`, `nvh264dec` | 81.8 / 78.5 % | 60.0 / 59.7 | 161.4 / 64.7 | 157.2 / 183.5 MiB |
+| `h264-2160p60.mp4`, `nvh264dec` | 204.1 / 213.4 % | 60.1 / 59.9 | 159.9 / 81.3 | 250.8 / 357.1 MiB |
+| `h264-2160p60.mp4`, `vah264dec` | 175.6 / 174.7 % | 36.3 / 41.0 | 95.0 / 44.8 | 140.8 / 235.5 MiB |
+
+What it says:
+
+- **The CPU is the same.** It is the conversion in both builds, the same code.
+- **The event loop wakes about half as often.** The answers to `waylandsink`'s sync requests went to veil's event loop too (entry 6 above); the new sink sends none.
+- **Memory is higher in this compositor.** The headless sway holds the buffer it shows until the next one replaces it, so the sink needs three (`video sink: the compositor holds every buffer; using 3` in a debug log): about 25 MiB more at 1080p, 100 MiB at 4K. A compositor that copies a frame into a texture when it is committed may let the sink keep two. Not measured in a real session.
+- **Scaling on the CPU does not pay.** A first version converted a frame larger than its place at the size of the place (4K on this 1080p output: a quarter of the pixels). It cost more and showed 33 frames a second of 60: GStreamer's converter leaves its fast path when it scales. Measured with `gst-launch-1.0 ... nvh264dec ! videoconvertscale n-threads=2 ! ... ! fakesink sync=false`, 600 frames of `h264-2160p60.mp4`: 2.8 s decoding alone, 11.4 s with the conversion at 4K, 15.9 s to 1080p with `method=bilinear`, 14.4 s with `4-tap`, 19.2 s with `lanczos`, 9.1 s with `nearest-neighbour`.
+- **A first version that did not flush the connection after each frame showed 3 frames a second**: its requests waited in libwayland's buffer until the event loop woke for something else. `two_videos_play_side_by_side` (`tests/headless.rs`) now checks the frame rate.
+
 ## Not measured yet
 
 - A real session (Hyprland with its dmabuf path): `--session`, by the maintainer. The conversion is known to happen there too on NVIDIA (above); what is left is the compositor's own share.

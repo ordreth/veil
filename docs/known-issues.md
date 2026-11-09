@@ -8,9 +8,9 @@ Each entry has the date of the last check. Re-check before relying on it: GStrea
 
 ## 1. A monitor change while a video plays crashes the daemon (GStreamer `waylandsink` bug)
 
-**Status:** open, accepted as a known limitation. Not fixed in veil, not patched in the Nix flake, not reported upstream (decision of 2026-10-10, see "Decision" below).
-**Affects:** video wallpapers only. Static images and the solid background are not affected.
-**Last checked:** 2026-10-15 (a monitor powered off and on), GStreamer 1.28.7 (nixpkgs unstable); the code was compared with GStreamer `main` on 2026-10-10.
+**Status:** fixed after 1.0.0-beta.1 (2026-11-09): veil no longer uses `waylandsink` (option E, see "Fixed: veil's own sink" at the end of this entry). The bug itself is still in GStreamer and was not reported upstream.
+**Affected:** video wallpapers of 1.0.0-beta.1. Static images and the solid background never were.
+**Last checked:** 2026-11-09, headless sway 1.12, GStreamer 1.28.7: none of the changes of the tables below ends the daemon any more (`output_changes_while_videos_play_leave_them_playing` in `tests/headless.rs`). Not checked on Hyprland yet. What follows up to "Fixed" is the history.
 
 ### Symptom
 
@@ -118,7 +118,17 @@ Option A. Do everything that is possible on veil's side, document the rest, and 
 - ~~Multi-monitor support~~: done; measured again (see the second table above). As expected, the bug is the same and meets more setups, because every monitor now plays the video. It is the strongest argument for option B, D or E so far.
 - The saved wallpapers and the systemd unit are done (2026-10-16, see "What veil does about it"): under the systemd unit a crash recovers by itself. Still to be checked on Hyprland by hand.
 
-### How to reproduce
+### Fixed: veil's own sink (2026-11-09)
+
+Option E. veil shows a video's frames itself: `PlaneSink` (`src/engine/video/sink.rs`), a GStreamer video sink of veil's own, converts every frame into a `wl_shm` buffer of a subsurface that veil's Wayland code makes (`src/wayland/plane.rs`). The subsurface's objects are made on veil's own event queue, so their events are handled by the event loop, and nothing binds a `wl_output` but veil's own code. With that the crash is gone, and so is the reason for the restart under the systemd unit and for most of the release of unseen videos (both stay: the unit for any other crash, the release because it saves the CPU of a video nobody sees).
+
+What it took that `waylandsink` did by itself: the frame-callback pacing (a frame that comes while the compositor has not taken the one before is dropped and counted, so `wayland::unseen` still works), the preroll frame (shown in `Paused`, and a preroll must never report a drop, or `basesink` never finishes the state change: found when a video paused behind a fullscreen window never played again), and the position of the subsurface (state of its parent, committed by the event loop when the sink reports a move).
+
+What was gained besides: the conversion and the crop of `fill` and `center` happen in one pass, straight into the compositor's memory, and no pixel is converted that is cropped away (entry 7); the event loop wakes about half as often while a video plays (`measurements.md`, "veil's own sink"). Scaling down on the CPU a frame larger than its place was tried and dropped: GStreamer's converter is slower when it scales than when it converts at the frame's own size (`src/engine/video/sink.rs`). What it costs: memory, in a compositor that holds the frame it shows until the next one replaces it (a headless sway): the sink then grows from two buffers to three, about 100 MB more than `waylandsink` for a 4K video. What was lost: frames in dmabufs. The sink takes system memory only; on NVIDIA that was all there was (entry 7), on Intel and AMD with VA-API a decoder that could hand the compositor dmabufs now hands veil system memory, which was never measured either way (no such hardware).
+
+The test that expected the crash became `output_changes_while_videos_play_leave_them_playing`: two outputs playing the same clip, a scale change, a move, a disable and an enable, a power off and on within a second, and a new output; the daemon runs and every video moves afterwards.
+
+### How to reproduce (1.0.0-beta.1)
 
 This is the procedure used to find the bug, written out by hand (sway and veil's GStreamer plugins must be available, for example `nix shell nixpkgs#sway` inside `nix develop`):
 
@@ -140,7 +150,7 @@ coredumpctl info veil                  # shows output_done on thread GstWlDispla
 
 ## 2. A video pipeline cannot move to another surface
 
-**Status:** handled. Recorded because it constrains the design.
+**Status:** no longer forced since veil shows its videos itself (2026-11-09, entry 1); the design below is kept. `PlaneSink` can be given another plane, so a pipeline could be kept while its output is away and moved to the output's new surface, and a video would then go on where it was instead of starting again. Not done: a pipeline kept for an output that is gone holds its memory and its threads.
 **Last checked:** 2026-10-10, GStreamer 1.28.7.
 
 `waylandsink` cannot change its window handle: a second `set_window_handle` only logs "changing window handle is not supported". It also keeps its window and display objects until the element is finalized, even in the `Null` state.
@@ -317,7 +327,7 @@ Keep the loop. Its cost is wake-ups, not CPU: in a headless sway, 160 to 175 wak
 
 ### When to revisit
 
-When the cause is known, or if a later change alters how frames reach the screen (replacing `waylandsink`, after 1.0). Whatever is tried has to be checked on Hyprland, not only in a headless sway.
+When the cause is known, or if a later change alters how frames reach the screen. Replacing `waylandsink` (2026-11-09, entry 1) kept everything this entry depends on: the video's subsurface is desynchronized and committed by the sink, as `waylandsink`'s was, and the loop commits veil's surface as before. Whether Hyprland shows the new sink's frames smoothly is to be checked there (`manual-tests.md`). Whatever is tried has to be checked on Hyprland, not only in a headless sway.
 
 Not tried: committing at the video's frame rate instead of on every frame callback (the fallback considered when the loop was measured). That work was closed on 2026-10-16 without it, by the maintainer's decision, with its goal (wake-ups close to the video's frame rate) not met. It is after 1.0.
 
@@ -347,6 +357,10 @@ Decoding costs about 1 % of a core. The rest is `videoconvert` in veil's sink bi
 | **B. Convert on the GPU** (`cudaconvertscale`, `glcolorconvert`, Vulkan) | The CPU only copies the RGB frame. | `cudaconvertscale` is not in this build of `nvcodec`; the GL path did not negotiate here and would bring a GL context into the daemon, with an element chain that only fits NVIDIA. Not pursued. |
 | **C. DRM dumb buffers** (`waylandsink drm-device=...`) | NV12 copied into a dmabuf, no conversion. | sway takes NV12 dmabufs only with NVIDIA's tiled modifiers, not as linear dumb buffers: it still converted (21.5 %). |
 | **D. Replace `waylandsink`** (entry 1, option E) | A sink of veil's own could take CUDA or GL frames, export them as dmabufs, and would also remove entries 1, 2 and the wake-ups of entry 6. | Large, and after 1.0. |
+
+### Since 2026-11-09
+
+veil's own sink replaced `waylandsink` (entry 1). The conversion is the same code (`GstVideoConverter`, two threads), now inside the sink, straight into the `wl_shm` buffer, and it skips what `fill` and `center` crop away. The cost of a video is the same within the noise (`measurements.md`, "veil's own sink"). The way to a cheaper video is unchanged: dmabufs (VA-API on Intel and AMD, which the sink does not take yet) or a conversion on the GPU.
 
 ### Decision (2026-10-17)
 

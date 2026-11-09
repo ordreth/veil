@@ -10,9 +10,10 @@
 //! nix develop .#headless -c cargo test --test headless -- --ignored
 //! ```
 //!
-//! Output changes while a video plays crash GStreamer's `waylandsink`
-//! (`docs/known-issues.md`, entry 1): every test that changes outputs does it
-//! with images only, and one test expects the crash.
+//! Output changes while a video plays used to crash the daemon, in
+//! GStreamer's `waylandsink` (`docs/known-issues.md`, entry 1). veil shows its
+//! videos itself since; one test makes those changes and expects the videos
+//! to play on.
 
 mod sway;
 
@@ -21,7 +22,7 @@ use std::io::Write;
 use std::process::Stdio;
 use std::time::Duration;
 use sway::hyprland::{self, FakeHyprland};
-use sway::{arg, hex, killed_by, Media, Sway, BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, YELLOW};
+use sway::{arg, hex, Media, Sway, BLACK, BLUE, CYAN, GREEN, MAGENTA, RED, YELLOW};
 use veil::ipc::protocol::{ErrorCode, Outcome, Response};
 use veil::ipc::report::{Kind, OutputList, State, Status, Toggled};
 use veil::ipc::server::ServerConfig;
@@ -141,8 +142,33 @@ fn two_videos_play_side_by_side() {
             "{output} plays its own clip"
         );
         assert!(sway.moves(output), "the video on {output} moves");
+        // Every frame reaches the compositor in time: the clips have 30 a
+        // second. (A sink that sent its frames without flushing the
+        // connection showed fewer than 3 a second, and moved all the same.)
+        let shown = shown_per_second(&sway, output);
+        assert!(shown >= 24.0, "{output} shows {shown:.1} frames a second");
     }
     assert_eq!(daemon.stop().code(), Some(0));
+}
+
+/// How many frames a second the video on `output` shows, from the sink's own
+/// counts over one second without a loop (they start again at every loop).
+fn shown_per_second(sway: &Sway, output: &str) -> f64 {
+    let rendered = || {
+        sway.output_status(output)
+            .video
+            .and_then(|video| video.rendered)
+            .expect("a playing video counts its frames")
+    };
+    for _ in 0..5 {
+        let (before, start) = (rendered(), std::time::Instant::now());
+        std::thread::sleep(Duration::from_secs(1));
+        let after = rendered();
+        if after >= before {
+            return (after - before) as f64 / start.elapsed().as_secs_f64();
+        }
+    }
+    panic!("the video on {output} looped in every second of five");
 }
 
 #[test]
@@ -246,21 +272,41 @@ fn set_on(file: &std::path::Path, output: &str) -> Vec<String> {
         .to_vec()
 }
 
-/// `docs/known-issues.md`, entry 1. If this test fails because the daemon
-/// survived, the upstream bug may be fixed: update that entry and this test.
+/// `docs/known-issues.md`, entry 1: each of these changes killed a daemon that
+/// played a video, while `waylandsink` showed it.
 #[test]
 #[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
-fn an_output_change_while_a_video_plays_kills_the_daemon() {
-    let sway = Sway::start("crash", &[(640, 360)]);
+fn output_changes_while_videos_play_leave_them_playing() {
+    let sway = Sway::start("changes", &[(640, 360), (640, 360)]);
     let mut daemon = sway.daemon(&["--input", arg(&ball())]);
     sway.wait_for_state("HEADLESS-1", State::Playing);
+    sway.wait_for_state("HEADLESS-2", State::Playing);
 
-    sway.msg(&["output", "HEADLESS-1", "scale", "2"]);
-    let status = daemon.wait();
-    assert!(
-        killed_by(status, Signal::SEGV),
-        "known issue 1: waylandsink crashes on an output change; the daemon ended with {status}"
-    );
+    let changes: [&[&str]; 6] = [
+        &["output", "HEADLESS-1", "scale", "2"],
+        &["output", "HEADLESS-2", "position", "2000", "0"],
+        &["output", "HEADLESS-2", "disable"],
+        &["output", "HEADLESS-2", "enable"],
+        &["output", "HEADLESS-1", "power", "off"],
+        &["output", "HEADLESS-1", "power", "on"],
+    ];
+    for change in changes {
+        sway.msg(change);
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            daemon.try_wait().is_none(),
+            "the daemon ended after `swaymsg {}`",
+            change.join(" ")
+        );
+    }
+    let third = sway.create_output(640, 360, 4000);
+
+    for output in ["HEADLESS-1", "HEADLESS-2", third.as_str()] {
+        sway.wait_for_state(output, State::Playing);
+        assert!(sway.moves(output), "the video on {output} stands still");
+    }
+    assert!(daemon.try_wait().is_none(), "the daemon is still running");
+    assert_eq!(daemon.stop().code(), Some(0));
 }
 
 #[test]
@@ -333,7 +379,6 @@ fn a_locked_screen_and_a_powered_off_output_release_the_video() {
     let sway = Sway::start("unseen", &[(640, 360)]);
     let mut daemon = sway.daemon(&["--input", arg(&ball())]);
     sway.wait_for_state("HEADLESS-1", State::Playing);
-    let threads = daemon.threads();
     let fds = daemon.fds();
 
     let lock = sway.client("swaylock", &["--color", "000000"]);
@@ -341,10 +386,13 @@ fn a_locked_screen_and_a_powered_off_output_release_the_video() {
     daemon.wait_for_log("has not been shown");
     let released = daemon.cpu_over(Duration::from_secs(2));
     assert!(released <= 2, "{released} CPU ticks in 2 s, released");
+    // The pipeline is gone. Its streaming threads may stay a while, idle in
+    // GLib's thread pool (under the names of their last task); its bus thread
+    // and its descriptors (the plane's buffers among them) do not.
+    let threads = daemon.thread_names();
     assert!(
-        daemon.threads() < threads && daemon.fds() < fds,
-        "the pipeline is gone: {} threads (playing: {threads}), {} descriptors (playing: {fds})",
-        daemon.threads(),
+        !threads.iter().any(|name| name == "veil-bus") && daemon.fds() < fds,
+        "the pipeline is gone: threads {threads:?}, {} descriptors (playing: {fds})",
         daemon.fds()
     );
 
@@ -354,8 +402,9 @@ fn a_locked_screen_and_a_powered_off_output_release_the_video() {
     sway.wait_for_state("HEADLESS-1", State::Playing);
     assert!(sway.moves("HEADLESS-1"));
 
-    // Off for longer than the release delay, so no sink is alive at power on
-    // (known issue 1).
+    // Off for longer than the release delay: released, and started again at
+    // power on. (A shorter power cycle is in
+    // `output_changes_while_videos_play_leave_them_playing`.)
     sway.msg(&["output", "HEADLESS-1", "power", "off"]);
     sway.wait_for_state("HEADLESS-1", State::Released);
     sway.msg(&["output", "HEADLESS-1", "power", "on"]);

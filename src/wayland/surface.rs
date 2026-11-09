@@ -40,6 +40,11 @@ impl ScaleGlobals {
             fractional_scale,
         }
     }
+
+    /// The viewporter, if the compositor has one.
+    pub fn viewporter(&self) -> Option<&WpViewporter> {
+        self.viewporter.as_ref()
+    }
 }
 
 /// Per-surface scale objects of the layer surface. They are destroyed on drop,

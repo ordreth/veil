@@ -1,14 +1,14 @@
 use crate::error::VeilError;
-use crate::scaling::{Color, ScaleOptions, SurfaceScale};
-use std::os::raw::c_void;
+use crate::scaling::{Color, Rect, ScaleOptions, SurfaceScale};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub mod image;
 pub mod loader;
 pub mod media;
-// The only module that may use `unsafe` (see `[lints]` in `Cargo.toml`): it
-// passes the raw pointers of `WindowHandle` on to GStreamer.
+// The only module that may contain `unsafe` (see `[lints]` in `Cargo.toml`):
+// it subclasses a GStreamer element, and the `glib` macros that do that expand
+// to `unsafe` code. It writes none of its own.
 #[allow(unsafe_code)]
 pub mod video;
 
@@ -133,32 +133,60 @@ impl Source {
     }
 }
 
-/// Raw Wayland handles of the surface an engine is shown on, for an engine that
-/// brings its own Wayland client code (GStreamer's `waylandsink`).
+/// A subsurface of the surface an engine is shown on, with buffers of its
+/// own, for an engine that produces frames on threads of its own (a video).
 ///
-/// How long each pointer is valid is a promise of whoever implements
-/// [`RenderTarget::window`], and what the `unsafe` code of an engine relies
-/// on. The two differ. Engines that do not need the pointers never read them,
-/// so a target without a real surface (a test double) may return nulls; an
-/// engine that needs them must check for that.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowHandle {
-    /// `wl_display*` of veil's own connection to the compositor.
-    ///
-    /// Valid **until the process ends**: the connection is never closed once a
-    /// target can hand this out, not even when the compositor is gone (the
-    /// object stays, it only stops working). Nothing shorter can be promised
-    /// to a video sink. It keeps this pointer, and a thread that reads the
-    /// connection, until the sink object is finalized, and GStreamer may do
-    /// that on one of its own threads a moment after the engine was dropped.
-    pub display: *mut c_void,
-    /// `wl_surface*` of the surface the wallpaper is shown on.
-    ///
-    /// Valid **until the engine's `detach` returns**: the Wayland side calls
-    /// `detach`, and waits for every engine it is still shutting down, before
-    /// it destroys the surface, on every way out. An engine must not use it
-    /// later, and must not keep it in anything that outlives its `detach`.
-    pub surface: *mut c_void,
+/// The Wayland side implements it, so every Wayland request stays there; the
+/// engine only writes pixels into the canvases it is given and says which one
+/// to show where. It may be used from any thread. Only one thread at a time
+/// allocates and shows (the engine's streaming thread, or the event loop while
+/// the video stands still), which the engine makes sure of.
+pub trait VideoPlane: Send + Sync {
+    /// Replaces the plane's buffers by `count` new ones of `size` pixels, and
+    /// returns their canvases in that order: `wl_shm` XRGB8888 (memory order
+    /// B, G, R, X), rows from the top with no padding, `4 * size.0 * size.1`
+    /// bytes each. A buffer on screen stays there until another is shown.
+    fn allocate(&self, size: (u32, u32), count: usize) -> Result<Vec<PlaneCanvas>, VeilError>;
+
+    /// Whether buffer `index` of the latest allocation may be written: the
+    /// compositor does not hold it.
+    fn is_free(&self, index: usize) -> bool;
+
+    /// Whether the compositor has taken the frame shown last (it answered its
+    /// frame callback). A frame shown before that would replace one the
+    /// compositor has not drawn yet.
+    fn ready(&self) -> bool;
+
+    /// Whether the compositor can scale a buffer to any size (`wp_viewporter`).
+    /// Without it a buffer must be the physical size of its place on the
+    /// surface, at the surface's integer scale.
+    fn scales(&self) -> bool;
+
+    /// Shows buffer `index` at `place` (logical pixels of the surface). Returns
+    /// whether the plane moved: where a subsurface is placed is state of its
+    /// parent, and takes effect only with a commit of that surface.
+    fn show(&self, index: usize, place: Rect) -> bool;
+
+    /// Takes the plane off the surface. Nothing it does after that reaches the
+    /// compositor. It must be called before the surface goes away (`detach`).
+    fn close(&self);
+}
+
+/// The pixels of one buffer of a [`VideoPlane`]. It is `'static`, so a
+/// GStreamer buffer can wrap it and a video converter write straight into the
+/// memory the compositor reads.
+pub struct PlaneCanvas(Box<dyn AsMut<[u8]> + Send>);
+
+impl PlaneCanvas {
+    pub fn new(memory: Box<dyn AsMut<[u8]> + Send>) -> Self {
+        Self(memory)
+    }
+}
+
+impl AsMut<[u8]> for PlaneCanvas {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut().as_mut()
+    }
 }
 
 /// Writes one frame: called with the canvas of a [`RenderTarget`] and the canvas
@@ -180,8 +208,9 @@ pub trait RenderTarget {
     /// `compose` fails, nothing is shown and its error is returned.
     fn draw(&mut self, compose: &mut Compose<'_>) -> Result<(), VeilError>;
 
-    /// Raw handles of the surface, for an engine that renders into it by itself.
-    fn window(&self) -> WindowHandle;
+    /// A new [`VideoPlane`] on the surface, for an engine that shows frames
+    /// by itself. Every call makes another one; the engine closes it.
+    fn video_plane(&mut self) -> Result<Arc<dyn VideoPlane>, VeilError>;
 }
 
 /// What an engine reports about itself, from a thread of its own.
@@ -448,11 +477,11 @@ pub(crate) mod testing {
             Ok(())
         }
 
-        fn window(&self) -> WindowHandle {
-            WindowHandle {
-                display: std::ptr::null_mut(),
-                surface: std::ptr::null_mut(),
-            }
+        /// A test double has no surface to put a subsurface on.
+        fn video_plane(&mut self) -> Result<Arc<dyn VideoPlane>, VeilError> {
+            Err(VeilError::BufferCreation(
+                "a test target has no Wayland surface".into(),
+            ))
         }
     }
 }

@@ -29,7 +29,7 @@ To start veil with your session, use its [systemd user unit](#run-as-a-systemd-u
 | Scaling: `fill`, `fit`, `stretch`, `center`, `tile`, and a background colour | Supported | For pictures and videos (`tile` acts as `center` for a video). |
 | HiDPI and fractional scaling | Supported | Checked pixel by pixel at scales 1, 1.25, 1.5 and 2. |
 | Every monitor, or the ones you name; a wallpaper per monitor; monitors plugged in later | Supported | With pictures. With a video, see the next row. |
-| Monitor changes while a video plays | Experimental | A change of any monitor (plugged in, unplugged, rescaled, powered on) crashes the daemon inside GStreamer ([known issue 1](docs/known-issues.md)). Under the systemd unit it is back with its wallpapers in about three seconds. |
+| Monitor changes while a video plays | Experimental | A monitor plugged in, unplugged, rescaled, moved or powered on leaves the videos playing (checked in a headless sway; until 1.0.0-beta.1 it crashed the daemon inside GStreamer, [known issue 1](docs/known-issues.md)). Not checked on Hyprland yet. |
 | `veil set`, `clear`, `pause`, `resume`, `toggle`, `status`, `outputs` (also as JSON), `quit`, `ping` | Supported | Stable exit statuses. A control socket for scripts and status bars ([`docs/ipc.md`](docs/ipc.md)). |
 | A new wallpaper replaces the old one only once it is ready | Supported | A video takes over when its first frame is on screen; a file that cannot be shown leaves the old wallpaper alone. |
 | Wallpapers saved and shown again after a restart | Supported | Per monitor, in `~/.local/state/veil/state.json`. |
@@ -37,7 +37,7 @@ To start veil with your session, use its [systemd user unit](#run-as-a-systemd-u
 | systemd user unit | Supported | Ready once every monitor shows its wallpaper, restarted after a crash, a watchdog. |
 | Pause a video behind a fullscreen window (or windows that cover it) | Supported on sway, experimental on Hyprland | Read from the compositor's IPC. On Hyprland 0.56.2 a fullscreen window paused its output and closing it played the video again (2026-10-20); with `--pause-on covered` and other cases it was checked against a fake Hyprland only. |
 | Stop a video while the screen is locked or the monitor is off | Supported on sway, experimental elsewhere | Works on any compositor that stops taking the video's frames, as sway does; not checked on Hyprland (lock and DPMS). The video starts again from its beginning. |
-| Hardware video decoding | Experimental | NVIDIA (`nvcodec`) decodes on the GPU, but every frame is converted to RGB on the CPU ([known issue 7](docs/known-issues.md)). Intel and AMD (VA-API) should avoid that conversion; not checked yet. Software decoding always works. |
+| Hardware video decoding | Experimental | NVIDIA (`nvcodec`) decodes on the GPU, but every frame is converted to RGB on the CPU ([known issue 7](docs/known-issues.md)). Intel and AMD (VA-API) decode on the GPU and are converted the same way: veil's video sink takes no dmabufs yet; not checked on such hardware. Software decoding always works. |
 | Animated GIFs | Supported | Played as videos; needs GStreamer's `libav` plugins. |
 | Hyprland | Experimental | veil's main target. Images, video on two monitors and the automatic pause ran on Hyprland 0.56.2 (2026-10-20); smoothness, scales, lock, power-off and crash recovery were not checked there. |
 | Other compositors with layer-shell (river, niri, Wayfire, labwc, KDE Plasma) | Experimental | Should work; nobody has reported yet. No pause behind windows there (the lock and power-off stop still applies). |
@@ -74,7 +74,7 @@ How each number was measured, and what was measured before, is in [`docs/measure
 
 ## Installation
 
-veil needs a Wayland compositor with `wlr-layer-shell` and GStreamer 1.x with the plugin sets `base`, `good`, `bad` and `libav` at run time (`waylandsink` is in `bad`). `XDG_RUNTIME_DIR` must be set, as it is in any desktop session.
+veil needs a Wayland compositor with `wlr-layer-shell` and GStreamer 1.x with the plugin sets `base`, `good`, `bad` and `libav` at run time (the hardware decoders are in `bad`). `XDG_RUNTIME_DIR` must be set, as it is in any desktop session.
 
 ### Prebuilt binaries
 
@@ -311,7 +311,7 @@ systemctl --user enable --now veil
 ```
 
 - `systemctl --user start veil` returns once every monitor shows its wallpaper, and `systemctl --user status veil` says how start-up went.
-- After a crash (such as the one on monitor changes, [known issue 1](docs/known-issues.md)) it is restarted after 2 seconds, with the wallpapers it had. It is not restarted after a wrong configuration file (fix it, then `systemctl --user restart veil`), a second daemon, or the end of the session.
+- After a crash it is restarted after 2 seconds, with the wallpapers it had. It is not restarted after a wrong configuration file (fix it, then `systemctl --user restart veil`), a second daemon, or the end of the session.
 - A watchdog restarts a daemon whose event loop is stuck, and `MALLOC_ARENA_MAX=1` keeps memory flat over video switches.
 - The log is in the journal: `journalctl --user -u veil`.
 
@@ -347,10 +347,9 @@ The `veil` commands talk to the daemon through a Unix socket, `$XDG_RUNTIME_DIR/
 
 The details, the measurements and the options considered are in [`docs/known-issues.md`](docs/known-issues.md).
 
-- **A monitor change while a video plays crashes the daemon** (entry 1). The bug is in GStreamer's `waylandsink` (1.28.7, unchanged upstream): it segfaults when the compositor reports a change of any monitor (scale, resolution, refresh rate, rotation, position, a monitor powered on again) and, with several monitors, one being added or removed. Pictures are not affected. Run veil under its systemd unit: it is back with its wallpapers within about three seconds.
 - **A video costs CPU on NVIDIA** (entry 7): about 20 % of a core for 1080p at 30 fps (see [Performance](#performance)).
 - **Memory grows with video switches without one allocator arena** (entry 3). The Nix package and the systemd unit set `MALLOC_ARENA_MAX=1`; set it yourself when you start a binary built from source by hand.
-- **A stopped video starts from its beginning.** A video stopped while the screen was locked or the monitor was off plays again from its start, and each lock is one more pipeline built. A monitor switched off and on again within 2 seconds still hits the crash above.
+- **A stopped video starts from its beginning.** A video stopped while the screen was locked or the monitor was off plays again from its start, and each lock is one more pipeline built.
 - **The automatic pause knows only rectangles.** With `--pause-on covered` a translucent window counts as covering; a floating window that is moved is noticed at the next workspace or window event. It works under Hyprland (0.40 or newer) and sway only.
 - **A picture is scaled again on the event loop** when its monitor is resized or rescaled, once per change. A file that never finishes loading (a network mount that hangs) holds back later `veil set`, which give up after 30 seconds; the daemon keeps running.
 - **A video that hangs without an error is not noticed,** and one whose frames are damaged while its container stays readable is played as it is.

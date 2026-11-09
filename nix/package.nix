@@ -16,10 +16,11 @@
 let
   cargoToml = lib.importTOML ../Cargo.toml;
 
-  # Everything a pipeline of veil asks for: `playbin` and `videoconvert`
-  # (base), `videocrop` and the demuxers of the common containers (good),
-  # `waylandsink` and the VA-API decoders (bad), and the software decoders,
-  # among them `avdemux_gif`/`avdec_gif` for animated GIFs (libav).
+  # Everything a pipeline of veil asks for: `playbin` and the video converter
+  # veil's own sink uses (base), the demuxers of the common containers
+  # (good), the hardware decoders, VA-API and NVIDIA's (bad), and the
+  # software decoders, among them `avdemux_gif`/`avdec_gif` for animated GIFs
+  # (libav).
   gstPlugins = with gst_all_1; [
     gstreamer
     gst-plugins-base

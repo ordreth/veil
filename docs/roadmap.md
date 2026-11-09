@@ -38,7 +38,7 @@ All of these must be true for 1.0:
 
 ### Open decisions
 
-- **Known issue 1:** whether to report the `waylandsink` crash upstream after all. Not blocking.
+- **Known issue 1:** fixed in veil by its own video sink (2026-11-09). Whether to report the `waylandsink` crash upstream after all is left open; it no longer affects veil.
 - **Other distributions and compositors:** veil is developed on NixOS and Hyprland, at the maintainer's own pace. Another system is looked at when people who use it show interest, not ahead of time ([Discussions, "Reports"](https://github.com/ordreth/veil/discussions/categories/reports)).
 - **The crate name:** `veil` is taken on crates.io; decided on 2026-10-19 not to publish there for 1.0.
 
@@ -48,9 +48,9 @@ Not started before the release. None of these is needed to change wallpapers by 
 
 - **Playback options:** audio (muted today; with one pipeline per output it first needs a decision on which output plays the sound), a frame-rate cap (`videorate` drops frames after they are decoded, so whether it saves anything is a question for the measurements), playback speed, loop points, a decoder preference. Forcing software decoding already works through `GST_PLUGIN_FEATURE_RANK` ([`troubleshooting.md`](troubleshooting.md)).
 - **Playlists and rotation:** `veil set <dir> --interval 30m [--shuffle]`, `next`/`prev`, on a `calloop` timer and not a thread. Rotation can be scripted with `veil set` meanwhile.
-- **Transitions:** an optional fade between images. The two-engine hand-over of `RenderState` is what a fade would build on, and it would have to be redone if `waylandsink` is replaced.
+- **Transitions:** an optional fade between images. The two-engine hand-over of `RenderState` is what a fade would build on.
 - **More compositor backends and triggers:** the niri and river backends (sway and Hyprland exist), and pausing when the session is idle or on battery.
-- **Replacing `waylandsink`:** a sink of veil's own would remove known issues 1 and 2, the conversion cost of known issue 7 on NVIDIA, and the wake-ups measured in [`measurements.md`](measurements.md). Large.
+- **After replacing `waylandsink`** (done on 2026-11-09, known issue 1): dmabuf frames through `zwp_linux_dmabuf_v1` (VA-API on Intel and AMD, without a conversion on the CPU), a conversion on the GPU for NVIDIA's decoders (known issue 7), and a pipeline that moves to its output's new surface instead of starting again (known issue 2).
 - **A frame-callback loop at the video's frame rate** instead of the display's (known issue 6): not tried.
 - **Packaging:** NixOS and home-manager modules (`programs.veil.enable`, `settings` rendered to TOML), AUR, `.deb` and `.rpm` packages. Flatpak is out of scope: it cannot reach the compositor's IPC socket by default.
 - **Dependency hygiene:** fewer `notify-rust` features or a direct call to `org.freedesktop.Notifications`; upgrades of `gstreamer` (0.22), `thiserror` (1 to 2) and `smithay-client-toolkit`, which remove the exceptions in `deny.toml`; the `image` features veil does not use (the default features build an AV1 encoder and the OpenEXR codec); Dependabot or Renovate.
