@@ -393,10 +393,15 @@ impl Sway {
         ));
         let log = std::fs::File::create(&log_path).expect("create the daemon log");
         // Without a core file: one test expects a crash, and any other would
-        // fail its test anyway. `exec` keeps the process id.
+        // fail its test anyway. `exec` keeps the process id, so the shell can
+        // set `WATCHDOG_PID` as systemd does when a test gives `WATCHDOG_USEC`.
         let mut command = Command::new("sh");
         command
-            .args(["-c", "ulimit -c 0 && exec \"$0\" \"$@\""])
+            .args([
+                "-c",
+                "ulimit -c 0 && if [ -n \"$WATCHDOG_USEC\" ]; then export WATCHDOG_PID=$$; fi \
+                 && exec \"$0\" \"$@\"",
+            ])
             .arg(env!("CARGO_BIN_EXE_veil"))
             .arg("daemon")
             .args(args)
@@ -467,6 +472,12 @@ impl Sway {
                 Err(format!("last status: {status:?}"))
             }
         })
+    }
+
+    /// Ends the compositor, as a session that is over does.
+    pub fn kill(&mut self) {
+        let _ = self.process.kill();
+        let _ = self.process.wait();
     }
 
     /// Starts a client of this compositor (`foot`, `swaylock`).

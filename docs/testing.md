@@ -50,6 +50,7 @@ The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a h
 | `a_video_that_cannot_start_does_not_become_the_default` | a `veil set` of a file GStreamer cannot play fails and changes nothing: not the screen, not the default, not the state file, and an output connected later gets the previous default |
 | `flags_the_configuration_file_and_set_each_decide_their_part` | the configuration file on three outputs: its defaults, a section's own `mode`, a section whose picture is missing (its `bg_color`, the daemon runs on); `veil set` for one output and for all takes the file's defaults; after a restart `--mode` and `--bg-color` win over the file's defaults, a section's own keys over the flags, and the file over what `veil set` saved |
 | `the_outputs_of_the_file_and_of_the_flags` | `outputs = [...]` in the file: only those outputs are drawn on, one not yet connected is awaited and gets its wallpaper when it comes, `veil set` on another is refused; `--output` replaces the list |
+| `the_service_manager_hears_ready_the_watchdog_and_the_end` | the daemon under a stand-in for systemd (its own `NOTIFY_SOCKET`, `WATCHDOG_USEC` of 400 ms): `READY=1` once, when both outputs play their video and not before; `WATCHDOG=1` every 200 ms, and none from a stopped process; `STOPPING=1` and status 0 after `veil quit`; status 5 when the compositor goes away |
 
 The GPU tests (`tests/gpu.rs`) start the same headless sway rendering on an Intel or AMD GPU, play H.264 clips of four coloured quadrants coded as BT.709 and as BT.601 (limited range, made with ffmpeg) with `vah264dec`, and compare the colours on screen with ffmpeg's decode of the clip, within 4 in each channel (the wrong matrix or range is off by 10 or more in some quadrant):
 
@@ -68,7 +69,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **The systemd unit at run time:** readiness once every output shows its wallpaper, a restart after a crash, the watchdog, no restart for exit statuses 2, 4 and 5.
 - **The Nix package outside the dev shell:** a video plays with the package's wrapper in an empty environment.
 - **What each shell offers for completion** (the flake check only loads the scripts).
 - **The failures of [`troubleshooting.md`](troubleshooting.md):** a missing plugin set, demuxer or decoder, a stale registry, another wallpaper program, an unknown output name, with the messages the guide quotes.
@@ -80,5 +80,6 @@ What CI and a headless sway cannot reach. Problems here are found by using veil 
 
 - **Hyprland itself.** Its backend is tested against a fake Hyprland, not against Hyprland's rendering: whether videos play smoothly there ([known issue 6](known-issues.md)), whether a video in `fill` stands still at its loop point ([known issue 5](known-issues.md)), its lock screen, DPMS and logout.
 - **Graphics cards CI does not have:** CI has no GPU, so hardware decoding (NVIDIA, Intel, AMD) and the dmabuf path are not tested there. The dmabuf path on Intel and AMD has tests of its own (`tests/gpu.rs`) that run where such a GPU is; NVIDIA's decoders have none.
+- **systemd itself.** The tests stand in for the service manager; a user systemd cannot run where they do. What the daemon tells it and its exit statuses are tested (statuses 2 and 4 in `tests/cli.rs`), and the unit's settings against them (`tests/systemd.rs`), but not systemd acting on them: the restart after a crash, the kill when the watchdog is not pinged, no restart for 2, 4 and 5.
 - **aarch64 with a compositor:** the release workflow builds for aarch64 and runs the tests there, but nothing has shown a wallpaper on it.
 - **Compositors other than sway and Hyprland**, and the GStreamer of distributions other than Debian 12 ([known issue 8](known-issues.md)).

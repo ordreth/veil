@@ -958,3 +958,126 @@ fn the_outputs_of_the_file_and_of_the_flags() {
     assert_eq!(drawn, ["HEADLESS-2"]);
     assert_eq!(daemon.stop().code(), Some(0));
 }
+
+/// A service manager, as far as the daemon can tell: the socket of
+/// `NOTIFY_SOCKET`. A thread reads what the daemon sends; when it reads
+/// `READY=1` it asks the daemon for its status at once, so that the answer
+/// shows the outputs as they were when the daemon said it was ready.
+struct FakeManager {
+    path: std::path::PathBuf,
+    heard: std::sync::Arc<std::sync::Mutex<Vec<(std::time::Instant, String)>>>,
+    at_ready: std::sync::mpsc::Receiver<Status>,
+}
+
+impl FakeManager {
+    fn start(sway: &Sway) -> Self {
+        let path = sway.dir().join("notify.sock");
+        let socket = std::os::unix::net::UnixDatagram::bind(&path).expect("bind NOTIFY_SOCKET");
+        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (ready, at_ready) = std::sync::mpsc::channel();
+        let control = sway.socket();
+        let log = heard.clone();
+        std::thread::spawn(move || {
+            let mut buffer = [0u8; 4096];
+            while let Ok(length) = socket.recv(&mut buffer) {
+                let message = String::from_utf8_lossy(&buffer[..length]).into_owned();
+                if message.lines().any(|line| line == "READY=1") {
+                    let mut stream = std::os::unix::net::UnixStream::connect(&control)
+                        .expect("connect to the daemon");
+                    stream
+                        .write_all(b"{\"cmd\":\"status\"}\n")
+                        .expect("ask for the status");
+                    let _ = ready.send(result(sway::read_response(&mut stream)));
+                }
+                log.lock()
+                    .expect("the log")
+                    .push((std::time::Instant::now(), message));
+            }
+        });
+        Self {
+            path,
+            heard,
+            at_ready,
+        }
+    }
+
+    /// How many messages had a line `line`, since `since`.
+    fn count(&self, line: &str, since: std::time::Instant) -> usize {
+        self.heard
+            .lock()
+            .expect("the log")
+            .iter()
+            .filter(|(at, message)| *at >= since && message.lines().any(|l| l == line))
+            .count()
+    }
+
+    fn messages(&self) -> String {
+        let heard = self.heard.lock().expect("the log");
+        heard
+            .iter()
+            .map(|(_, message)| message.replace('\n', " | "))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn the_service_manager_hears_ready_the_watchdog_and_the_end() {
+    let mut sway = Sway::start("systemd", &[(640, 360), (640, 360)]);
+    let manager = FakeManager::start(&sway);
+    // A watchdog of 400 ms: a ping every 200 ms.
+    let notify = |command: &mut std::process::Command| {
+        command
+            .env("NOTIFY_SOCKET", &manager.path)
+            .env("WATCHDOG_USEC", "400000");
+    };
+
+    // Ready once both outputs show their first frame, not before.
+    let start = std::time::Instant::now();
+    let mut daemon = sway.daemon_with(&["--input", arg(&ball())], notify);
+    let status = manager
+        .at_ready
+        .recv_timeout(sway::PATIENCE)
+        .unwrap_or_else(|_| panic!("no READY=1:\n{}", manager.messages()));
+    for output in ["HEADLESS-1", "HEADLESS-2"] {
+        let at_ready = sway::output_of(&status, output);
+        assert_eq!(at_ready.state, State::Playing, "{output}: {at_ready:?}");
+    }
+    assert_eq!(manager.count("READY=1", start), 1);
+
+    // The event loop pings the watchdog at half its timeout.
+    let since = std::time::Instant::now();
+    std::thread::sleep(Duration::from_secs(2));
+    let pings = manager.count("WATCHDOG=1", since);
+    assert!((6..=14).contains(&pings), "{pings} pings in 2 s");
+    // A stopped loop pings no more (systemd then kills and restarts it).
+    daemon.signal(Signal::STOP);
+    let since = std::time::Instant::now();
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(manager.count("WATCHDOG=1", since), 0);
+    daemon.signal(Signal::CONT);
+
+    // `veil quit`: STOPPING=1, and status 0, which the unit does not restart.
+    sway.veil_ok(&["quit"]);
+    assert_eq!(daemon.wait().code(), Some(0));
+    assert_eq!(
+        manager.count("STOPPING=1", since),
+        1,
+        "{}",
+        manager.messages()
+    );
+
+    // A compositor that is gone: status 5, which the unit does not restart
+    // either (a crash, a status 1 or a signal, it does).
+    let red = Media::png(64, 36, RED);
+    let mut daemon = sway.daemon_with(&["--input", arg(&red)], notify);
+    sway.wait_for_state("HEADLESS-1", State::Shown);
+    sway.kill();
+    assert_eq!(
+        daemon.wait().code(),
+        Some(i32::from(veil::error::EXIT_COMPOSITOR_GONE)),
+        "{}",
+        daemon.log()
+    );
+}
