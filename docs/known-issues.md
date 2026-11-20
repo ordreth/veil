@@ -422,8 +422,8 @@ When a tester reports the tarball on one of these distributions with a composito
 
 ## 9. Washed-out colours from VA-API decoders in system memory
 
-**Status:** open, found 2026-11-20, not fixed. **Affects:** videos decoded by a VA-API decoder (Intel, AMD) whose frames veil converts on the CPU: every such video before 2026-11-20, and now the ones that cannot go to the compositor in dmabufs (entry 7).
-**Last checked:** 2026-11-20, `vah264dec` (GStreamer 1.28.8) on an Intel GPU, a headless sway.
+**Status:** fixed after 1.0.0-beta.1 (2026-11-20, see "Fixed" at the end of this entry). **Affected:** videos decoded by a VA-API decoder (Intel, AMD) whose frames veil converts on the CPU: every such video in 1.0.0-beta.1, and later the ones that cannot go to the compositor in dmabufs (entry 7), which on Hyprland up to 0.57 is every video.
+**Last checked:** 2026-11-20, `vah264dec` (GStreamer 1.28.8) on an Intel GPU, a headless sway rendering with `pixman` (frames converted on the CPU).
 
 ### Symptom
 
@@ -436,4 +436,8 @@ The decoder's caps in system memory say `colorimetry=0:3:0:0`: the matrix (BT.70
 ### What would fix it
 
 Taking an unknown range of a YCbCr stream for the limited one before the converter is made (`sink.rs`, `new_converter`). Left for its own change: it changes the colours of every video that comes this way, which is to be checked on its own. Whether NVIDIA's decoders say the range was not checked.
+
+### Fixed (2026-11-20)
+
+Before the converter is made, what the stream's colorimetry leaves open is filled in as the dmabuf path does: the limited range, and the matrix GStreamer assumes for the frame's height (`with_known_coding` in `sink.rs`). A range or matrix the stream does say is kept. On the same clips of colour bars, converted on the CPU, the colours are now ffmpeg's within 3 (red (251, 0, 0) for BT.709, (253, 0, 0) for BT.601), as in dmabufs. The cost of a video is the same: H.264 1080p30 with `vah264dec`, 40.9 to 41.2 % of a core against 40.7 to 41.0 % before, every frame shown (four alternating 30 s runs each; the first run of the old build, 35.2 %, was off from all the others). Whether NVIDIA's decoders say the range is still not checked; they get the same treatment if they do not.
 

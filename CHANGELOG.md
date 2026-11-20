@@ -11,6 +11,7 @@ veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The l
 - A monitor that is changed (scale, mode, position), plugged in, unplugged, powered on or woken from DPMS while a video plays no longer crashes the daemon (known issue 1). The crash was in GStreamer's `waylandsink`, which veil no longer uses.
 - A video that was stopped because nobody saw it (a locked session, a monitor that is off) no longer shows the bare background colour when it is seen again: its last frame stays on screen until the video, started again, has its first frame.
 - On Hyprland 0.57, veil reads the monitors again (`cannot read the answer to j/monitors: missing field 'id'`), so a video pauses under a fullscreen or covering window there too. Hyprland 0.57 leaves the id of a monitor's special workspace out when none is shown.
+- Videos decoded by a VA-API decoder (Intel, AMD) and converted on the CPU no longer look washed out (known issue 9): the decoder does not say the video's colour range, and GStreamer's converter took it for the full one. veil now takes an unknown range for the limited one of video, as it already did for frames in dmabufs. On Hyprland up to 0.57 this is every video on Intel and AMD.
 
 ### Changed
 

@@ -136,7 +136,7 @@ Needs an Intel or AMD GPU with a VA-API driver, and a headless sway that renders
 |---|---|
 | `veil daemon --input bt709.mp4 --mode fill` on a 1920x1080 output, `vulkan` | the log says `video frames go to the compositor as they are, in dmabufs (NV12:0x0100000000000002, ... Bt709 ...)`; the bars have ffmpeg's colours within 3 (red (253, 0, 0) against (251, 0, 0)) |
 | The same with `bt601.mp4` | `Bt601`, the same colours as ffmpeg's |
-| The same with `gles2` | with `bt601.mp4` as above; with `bt709.mp4` `the compositor cannot be told how the video's colours are coded`, `starting the video pipeline again, to negotiate its frames` (debug), and the video plays, converted on the CPU (with the colours of known issue 9) |
+| The same with `gles2` | with `bt601.mp4` as above; with `bt709.mp4` `the compositor cannot be told how the video's colours are coded`, `starting the video pipeline again, to negotiate its frames` (debug), and the video plays, converted on the CPU, with ffmpeg's colours within 3 (before the fix of known issue 9 they were washed out: red (237, 13, 15)) |
 | `h264-1080p30.mp4` with `--mode fill` on 2560x1080, `center` on 1280x720, `fit` on 2560x1080 | the same picture as the converting build (`--veil` of the commit before), cropped and placed alike: 810 rows of the frame, the middle 1280x720 of it, bars of the background colour left and right |
 | `scripts/bench/bench.sh --renderer vulkan --render-device /dev/dri/renderD128` with each reference clip | a few percent of a core, every frame shown ([`measurements.md`](measurements.md), "Frames in dmabufs") |
 

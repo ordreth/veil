@@ -579,6 +579,49 @@ fn buffer_size(
     (place.0.max(1), place.1.max(1))
 }
 
+/// `input`, a YCbCr stream, with what its colorimetry leaves open filled in
+/// as [`coding`] does. GStreamer's converter takes an unknown range for the
+/// full one, which shows a video of the limited range (nearly every one)
+/// washed out: VA-API decoders in system memory say `0:3:0:0`, BT.709 with
+/// an unknown range (known issue 9). The frames themselves are mapped with
+/// `input`: the converter only checks their format and size. `input` as it
+/// is if it cannot be told otherwise.
+fn with_known_coding(input: &gst_video::VideoInfo) -> gst_video::VideoInfo {
+    if !input.is_yuv() {
+        return input.clone();
+    }
+    let given = input.colorimetry();
+    let known = coding(Some(&given.to_string()), input.height());
+    let matrix = match known.matrix {
+        ColorMatrix::Bt601 => gst_video::VideoColorMatrix::Bt601,
+        ColorMatrix::Bt709 => gst_video::VideoColorMatrix::Bt709,
+        ColorMatrix::Bt2020 => gst_video::VideoColorMatrix::Bt2020,
+        ColorMatrix::Smpte240m => gst_video::VideoColorMatrix::Smpte240m,
+        ColorMatrix::Fcc => gst_video::VideoColorMatrix::Fcc,
+    };
+    let range = if known.full_range {
+        gst_video::VideoColorRange::Range0_255
+    } else {
+        gst_video::VideoColorRange::Range16_235
+    };
+    if given.matrix() == matrix && given.range() == range {
+        return input.clone();
+    }
+    let colorimetry =
+        gst_video::VideoColorimetry::new(range, matrix, given.transfer(), given.primaries());
+    let filled = input.to_caps().and_then(|mut caps| {
+        caps.make_mut().set("colorimetry", colorimetry.to_string());
+        gst_video::VideoInfo::from_caps(&caps)
+    });
+    match filled {
+        Ok(filled) => filled,
+        Err(e) => {
+            tracing::debug!("video converter: cannot say the coding {colorimetry}: {e}");
+            input.clone()
+        }
+    }
+}
+
 fn new_converter(
     input: &gst_video::VideoInfo,
     crop: Crop,
@@ -587,6 +630,7 @@ fn new_converter(
 ) -> Result<Converter, VeilError> {
     let failed = |e: glib::BoolError| VeilError::Gstreamer(format!("video converter: {e}"));
     let to_i32 = |v: u32| i32::try_from(v).unwrap_or(i32::MAX);
+    let coded = with_known_coding(input);
     let output = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgrx, size.0, size.1)
         .fps(input.fps())
         .interlace_mode(input.interlace_mode())
@@ -602,12 +646,14 @@ fn new_converter(
     config.set_dest_width(Some(to_i32(size.0)));
     config.set_dest_height(Some(to_i32(size.1)));
     config.set_threads(CONVERTER_THREADS);
-    let converter = gst_video::VideoConverter::new(input, &output, Some(config)).map_err(failed)?;
+    let converter =
+        gst_video::VideoConverter::new(&coded, &output, Some(config)).map_err(failed)?;
     tracing::debug!(
-        "video converter: {}x{} {:?}, crop {crop:?}, to {}x{} XRGB8888",
+        "video converter: {}x{} {:?} ({}), crop {crop:?}, to {}x{} XRGB8888",
         input.width(),
         input.height(),
         input.format(),
+        coded.colorimetry(),
         size.0,
         size.1
     );
@@ -953,6 +999,64 @@ mod tests {
         assert!(!is_dmabuf(&raw));
         assert!(caps.structure(0).is_some_and(|s| s.has_field("drm-format")));
         assert_eq!(dmabuf_caps(&[]), None);
+    }
+
+    /// The XRGB8888 pixel the converter makes of an NV12 frame of one
+    /// colour, whose caps say `colorimetry`.
+    fn converted(colorimetry: &str, (y, u, v): (u8, u8, u8)) -> [u8; 3] {
+        let (width, height) = (64, 64);
+        let caps = gst_video::VideoInfo::builder(gst_video::VideoFormat::Nv12, width, height)
+            .build()
+            .expect("NV12 info")
+            .to_caps()
+            .expect("caps");
+        let mut caps = caps;
+        caps.make_mut().set("colorimetry", colorimetry);
+        let info = gst_video::VideoInfo::from_caps(&caps).expect("info with colorimetry");
+        let mut buffer = gst::Buffer::with_size(info.size()).expect("buffer");
+        {
+            let mut frame =
+                gst_video::VideoFrameRef::from_buffer_ref_writable(buffer.make_mut(), &info)
+                    .expect("frame");
+            frame.plane_data_mut(0).expect("luma").fill(y);
+            for pair in frame.plane_data_mut(1).expect("chroma").chunks_mut(2) {
+                pair.copy_from_slice(&[u, v]);
+            }
+        }
+        let converter = new_converter(&info, Crop::default(), (width, height), (width, height))
+            .expect("converter");
+        let mut canvas = gst::Buffer::with_size(converter.output.size()).expect("canvas");
+        let source =
+            gst_video::VideoFrameRef::from_buffer_ref_readable(&buffer, &info).expect("source");
+        let mut target = gst_video::VideoFrameRef::from_buffer_ref_writable(
+            canvas.make_mut(),
+            &converter.output,
+        )
+        .expect("target");
+        converter.converter.frame_ref(&source, &mut target);
+        let bgrx = &target.plane_data(0).expect("pixels")[..4];
+        [bgrx[2], bgrx[1], bgrx[0]]
+    }
+
+    #[test]
+    fn an_unknown_range_is_converted_as_the_limited_one() {
+        gst::init().expect("gstreamer init");
+        let near =
+            |got: [u8; 3], want: [u8; 3]| got.iter().zip(want).all(|(&g, w)| g.abs_diff(w) <= 2);
+        // What VA-API decoders say in system memory: BT.709, range unknown.
+        let white = converted("0:3:0:0", (235, 128, 128));
+        assert!(near(white, [255, 255, 255]), "white is {white:?}");
+        let black = converted("0:3:0:0", (16, 128, 128));
+        assert!(near(black, [0, 0, 0]), "black is {black:?}");
+        // BT.709 red, limited range (ffmpeg's colour bars).
+        let red = converted("0:3:0:0", (63, 102, 240));
+        assert!(near(red, [255, 0, 0]), "red is {red:?}");
+        // A range that is said is kept.
+        let full = converted("1:3:0:0", (235, 128, 128));
+        assert!(near(full, [235, 235, 235]), "full-range white is {full:?}");
+        // Nothing said at all: BT.601 below 577 rows, the limited range.
+        let red = converted("0:0:0:0", (81, 90, 240));
+        assert!(near(red, [255, 0, 0]), "BT.601 red is {red:?}");
     }
 
     #[test]
