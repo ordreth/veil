@@ -58,7 +58,14 @@ fn run_daemon(args: DaemonArgs) -> Result<(), VeilError> {
         Some(file) => tracing::info!("configuration file {}", file.path.display()),
         None => tracing::debug!("no configuration file"),
     }
-    let settings = config_file::settings(&args, file.as_ref());
+    let mut settings = config_file::settings(&args, file.as_ref());
+    // `--input` is saved as every output's wallpaper, and the state file holds
+    // absolute paths only (as `veil set` sends them).
+    settings.input = settings
+        .input
+        .as_deref()
+        .map(persist::absolute_input)
+        .transpose()?;
     if settings.input.is_some() && file.as_ref().is_some_and(|file| !file.outputs.is_empty()) {
         tracing::info!("--input is given; the wallpapers of the configuration file are not used");
     }

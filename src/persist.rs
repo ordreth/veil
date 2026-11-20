@@ -27,6 +27,7 @@ use std::thread::JoinHandle;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::VeilError;
 use crate::scaling::{Color, ScaleMode, ScaleOptions};
 
 /// The newest version of the state file's format, which this veil reads and
@@ -159,6 +160,28 @@ struct StateFile {
     default: Option<Entry>,
     #[serde(default)]
     outputs: BTreeMap<String, Entry>,
+}
+
+/// `input` as an absolute path, as the state file holds it: a relative path is
+/// resolved against the working directory of the process, the client's for a
+/// `veil set` (the daemon runs in a directory of its own) and the daemon's for
+/// its `--input`. Symbolic links are kept; they are followed when the file is
+/// opened.
+pub fn absolute_input(input: &str) -> Result<String, VeilError> {
+    let error = |source| VeilError::PathResolution {
+        path: input.to_string(),
+        source,
+    };
+    std::path::absolute(input)
+        .map_err(error)?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| {
+            error(std::io::Error::new(
+                ErrorKind::InvalidData,
+                "the absolute path is not valid UTF-8",
+            ))
+        })
 }
 
 /// One wallpaper in the state file.
@@ -470,6 +493,46 @@ impl Drop for Store {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn absolute_paths_are_kept_unchanged() {
+        assert_eq!(
+            absolute_input("/srv/wall paper.png").expect("absolute"),
+            "/srv/wall paper.png"
+        );
+    }
+
+    #[test]
+    fn relative_paths_are_resolved_against_the_working_directory() {
+        let cwd = std::env::current_dir().expect("working directory");
+        let expected = cwd.join("walls/a.png");
+        assert_eq!(
+            absolute_input("walls/a.png").expect("relative"),
+            expected.to_str().expect("UTF-8 working directory")
+        );
+        assert_eq!(
+            absolute_input("./walls/a.png").expect("relative with a dot"),
+            expected.to_str().expect("UTF-8 working directory")
+        );
+    }
+
+    #[test]
+    fn an_empty_path_is_an_error() {
+        assert!(matches!(
+            absolute_input(""),
+            Err(VeilError::PathResolution { .. })
+        ));
+    }
+
+    #[test]
+    fn a_resolved_relative_path_can_be_read_back() {
+        // A daemon started with `--input a.png` saved "a.png" as it was given,
+        // and the next start refused the whole file.
+        let mut wallpapers = Wallpapers::default();
+        let input = absolute_input("a.png").expect("relative");
+        wallpapers.set_everywhere(wallpaper(&input), &[], &[]);
+        assert_eq!(decode(&encode(&wallpapers)), Read::Wallpapers(wallpapers));
+    }
 
     fn wallpaper(input: &str) -> Wallpaper {
         Wallpaper::file(input, ScaleOptions::default())

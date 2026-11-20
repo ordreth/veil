@@ -3,6 +3,7 @@ use super::report::{self, OutputList, Status, Toggled};
 use super::{instance, peer};
 use crate::config::{ClearArgs, Command, SetArgs};
 use crate::error::VeilError;
+use crate::persist::absolute_input;
 use serde::de::DeserializeOwned;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
@@ -160,22 +161,6 @@ fn json_line(result: Option<serde_json::Value>) -> String {
     line
 }
 
-/// The path as the daemon has to see it. The daemon runs in its own working
-/// directory, so a relative path is resolved here, against the client's.
-/// Symbolic links are kept; the daemon follows them when it opens the file.
-fn absolute_input(input: &str) -> Result<String, VeilError> {
-    let path = std::path::absolute(input).map_err(|source| VeilError::PathResolution {
-        path: input.to_string(),
-        source,
-    })?;
-    path.into_os_string().into_string().map_err(|path| {
-        VeilError::Ipc(format!(
-            "the path {} is not valid UTF-8",
-            Path::new(&path).display()
-        ))
-    })
-}
-
 /// Sends one request to the daemon listening on `socket` and waits for its
 /// response, for at most [`RESPONSE_TIMEOUT`].
 pub fn send(socket: &Path, request: &Request) -> Result<Response, VeilError> {
@@ -241,28 +226,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn absolute_paths_are_sent_unchanged() {
-        assert_eq!(
-            absolute_input("/srv/wall paper.png").expect("absolute"),
-            "/srv/wall paper.png"
-        );
-    }
-
-    #[test]
-    fn relative_paths_are_resolved_against_the_working_directory() {
-        let cwd = std::env::current_dir().expect("working directory");
-        let expected = cwd.join("walls/a.png");
-        assert_eq!(
-            absolute_input("walls/a.png").expect("relative"),
-            expected.to_str().expect("UTF-8 working directory")
-        );
-        assert_eq!(
-            absolute_input("./walls/a.png").expect("relative with a dot"),
-            expected.to_str().expect("UTF-8 working directory")
-        );
-    }
-
-    #[test]
     fn the_result_is_accepted_by_the_request_validation() {
         let request = Request::Set {
             output: None,
@@ -272,14 +235,6 @@ mod tests {
             persist: true,
         };
         assert_eq!(request.validate(), Ok(()));
-    }
-
-    #[test]
-    fn an_empty_path_is_an_error() {
-        assert!(matches!(
-            absolute_input(""),
-            Err(VeilError::PathResolution { .. })
-        ));
     }
 
     #[test]
