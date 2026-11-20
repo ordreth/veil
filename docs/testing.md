@@ -48,6 +48,8 @@ The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a h
 | `the_daemon_answers_every_command_and_error_code` | the IPC table against the real daemon: every command, and every error code but `forbidden` (which needs a client of another user) |
 | `saved_and_configured_wallpapers_come_back_after_a_restart` | `veil quit` and `kill -9`, then the saved wallpapers; a configuration file wins for the output it names, and `veil config check` accepts it |
 | `a_video_that_cannot_start_does_not_become_the_default` | a `veil set` of a file GStreamer cannot play fails and changes nothing: not the screen, not the default, not the state file, and an output connected later gets the previous default |
+| `flags_the_configuration_file_and_set_each_decide_their_part` | the configuration file on three outputs: its defaults, a section's own `mode`, a section whose picture is missing (its `bg_color`, the daemon runs on); `veil set` for one output and for all takes the file's defaults; after a restart `--mode` and `--bg-color` win over the file's defaults, a section's own keys over the flags, and the file over what `veil set` saved |
+| `the_outputs_of_the_file_and_of_the_flags` | `outputs = [...]` in the file: only those outputs are drawn on, one not yet connected is awaited and gets its wallpaper when it comes, `veil set` on another is refused; `--output` replaces the list |
 
 The GPU tests (`tests/gpu.rs`) start the same headless sway rendering on an Intel or AMD GPU, play H.264 clips of four coloured quadrants coded as BT.709 and as BT.601 (limited range, made with ffmpeg) with `vah264dec`, and compare the colours on screen with ffmpeg's decode of the clip, within 4 in each channel (the wrong matrix or range is off by 10 or more in some quadrant):
 
@@ -66,7 +68,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **The configuration file in a running daemon:** the precedence of flags, the file and `veil set` on several outputs, an output whose file is missing, `outputs = [...]`. The parsing and merging are unit tests (`src/config.rs`).
 - **The systemd unit at run time:** readiness once every output shows its wallpaper, a restart after a crash, the watchdog, no restart for exit statuses 2, 4 and 5.
 - **The Nix package outside the dev shell:** a video plays with the package's wrapper in an empty environment.
 - **What each shell offers for completion** (the flake check only loads the scripts).

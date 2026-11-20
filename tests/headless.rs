@@ -797,3 +797,164 @@ fn a_video_that_cannot_start_does_not_become_the_default() {
     assert!(saved.contains(arg(&clip)), "{saved}");
     assert!(!saved.contains(arg(&broken)), "{saved}");
 }
+
+/// Writes the daemon's configuration file (the default one, in the test's
+/// own `XDG_CONFIG_HOME`).
+fn write_config(sway: &Sway, text: &str) {
+    let file = sway.config_file();
+    std::fs::create_dir_all(file.parent().expect("a directory"))
+        .expect("create the configuration directory");
+    std::fs::write(file, text).expect("write the configuration file");
+}
+
+/// A path or a colour as a TOML string.
+fn toml(text: &str) -> String {
+    serde_json::to_string(text).expect("a TOML string")
+}
+
+/// The colour a few pixels in from the left edge, half way down: the
+/// picture with `fit` and a wide picture, the background with `center`.
+fn left_middle(sway: &Sway, output: &str) -> sway::Rgb {
+    let shot = sway.shot(output);
+    shot.get_pixel(8, shot.height() / 2).0
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn flags_the_configuration_file_and_set_each_decide_their_part() {
+    let sway = Sway::start("config", &[(640, 480), (640, 480), (640, 480)]);
+    // Wide pictures: `fit` leaves bars above and below, `fill` does not, and
+    // `center` shows them small in the middle.
+    let red = Media::png(64, 16, RED);
+    let green = Media::png(64, 16, GREEN);
+    let missing = sway.dir().join("missing.png");
+    write_config(
+        &sway,
+        &format!(
+            "[defaults]\nmode = \"fit\"\nbg_color = {}\n\n\
+             [output.HEADLESS-1]\ninput = {}\n\n\
+             [output.HEADLESS-2]\ninput = {}\nmode = \"fill\"\n\n\
+             [output.HEADLESS-3]\ninput = {}\nbg_color = {}\n",
+            toml(&hex(BLUE)),
+            toml(arg(&red)),
+            toml(arg(&green)),
+            toml(arg(&missing)),
+            toml(&hex(MAGENTA)),
+        ),
+    );
+
+    // The file alone: its defaults, a section's own mode, and a picture that
+    // is not there, which leaves its output in the section's colour.
+    let mut daemon = sway.daemon(&[]);
+    sway.wait_for_state("HEADLESS-1", State::Shown);
+    sway.wait_for_state("HEADLESS-2", State::Shown);
+    sway.wait_for_centre("HEADLESS-3", MAGENTA);
+    assert_eq!(sway.centre("HEADLESS-1"), RED);
+    assert_eq!(left_middle(&sway, "HEADLESS-1"), RED, "fit");
+    assert_eq!(sway.corner("HEADLESS-1"), BLUE, "the file's bg_color");
+    assert_eq!(sway.corner("HEADLESS-2"), GREEN, "the section's fill");
+    assert_eq!(sway.corner("HEADLESS-3"), MAGENTA);
+    assert!(daemon.log().contains(arg(&missing)), "{}", daemon.log());
+    assert!(daemon.try_wait().is_none(), "the daemon runs on");
+
+    // `veil set` for one output, then for all: the file's defaults are its
+    // defaults too.
+    sway.veil_ok(&[
+        "set",
+        "--input",
+        arg(&Media::png(64, 48, YELLOW)),
+        "--output",
+        "HEADLESS-1",
+    ]);
+    assert_eq!(sway.corner("HEADLESS-1"), YELLOW);
+    assert_eq!(
+        sway.corner("HEADLESS-2"),
+        GREEN,
+        "another output keeps its own"
+    );
+    sway.veil_ok(&["set", "--input", arg(&Media::png(64, 16, YELLOW))]);
+    for output in ["HEADLESS-1", "HEADLESS-2", "HEADLESS-3"] {
+        assert_eq!(left_middle(&sway, output), YELLOW, "{output}: fit");
+        assert_eq!(sway.corner(output), BLUE, "{output}: the file's bg_color");
+    }
+    sway.veil_ok(&["quit"]);
+    assert_eq!(daemon.wait().code(), Some(0));
+
+    // Flags win over the file's defaults, a section's own keys over flags,
+    // and the file over what `veil set` saved.
+    let daemon = sway.daemon(&["--mode", "center", "--bg-color", &hex(CYAN)]);
+    sway.wait_for_state("HEADLESS-1", State::Shown);
+    sway.wait_for_state("HEADLESS-2", State::Shown);
+    sway.wait_for_centre("HEADLESS-3", MAGENTA);
+    assert_eq!(sway.centre("HEADLESS-1"), RED);
+    assert_eq!(left_middle(&sway, "HEADLESS-1"), CYAN, "center, --bg-color");
+    assert_eq!(sway.corner("HEADLESS-2"), GREEN, "the section's fill");
+    assert_eq!(sway.corner("HEADLESS-3"), MAGENTA, "the section's bg_color");
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn the_outputs_of_the_file_and_of_the_flags() {
+    let sway = Sway::start("outputs", &[(640, 480), (640, 480)]);
+    let red = Media::png(64, 48, RED);
+    write_config(
+        &sway,
+        &format!(
+            "[defaults]\noutputs = [\"HEADLESS-1\", \"HEADLESS-3\"]\n\n\
+             [output.\"*\"]\ninput = {}\n",
+            toml(arg(&red)),
+        ),
+    );
+    let drawn_on = || -> Vec<(String, bool, bool)> {
+        let list: OutputList = result(sway.request(b"{\"cmd\":\"outputs\"}\n"));
+        list.outputs
+            .into_iter()
+            .map(|o| (o.name.unwrap_or_default(), o.connected, o.wallpaper))
+            .collect()
+    };
+
+    // The file's list: one output now, one awaited, and not the other.
+    let mut daemon = sway.daemon(&[]);
+    sway.wait_for_state("HEADLESS-1", State::Shown);
+    assert_eq!(sway.centre("HEADLESS-1"), RED);
+    assert_ne!(sway.centre("HEADLESS-2"), RED);
+    let mut found = drawn_on();
+    found.sort();
+    assert_eq!(
+        found,
+        [
+            ("HEADLESS-1".into(), true, true),
+            ("HEADLESS-2".into(), true, false),
+            ("HEADLESS-3".into(), false, true),
+        ]
+    );
+    let refused = sway.veil(&["set", "--input", arg(&red), "--output", "HEADLESS-2"]);
+    assert!(!refused.status.success(), "{refused:?}");
+    assert!(
+        String::from_utf8_lossy(&refused.stderr).contains("HEADLESS-2"),
+        "{refused:?}"
+    );
+
+    // The awaited output, once connected, gets the file's wallpaper.
+    let third = sway.create_output(640, 480, 1280);
+    assert_eq!(third, "HEADLESS-3");
+    sway.wait_for_centre(&third, RED);
+    sway.veil_ok(&["quit"]);
+    assert_eq!(daemon.wait().code(), Some(0));
+
+    // `--output` replaces the file's list.
+    let daemon = sway.daemon(&["--output", "HEADLESS-2"]);
+    sway.wait_for_state("HEADLESS-2", State::Shown);
+    assert_eq!(sway.centre("HEADLESS-2"), RED);
+    for output in ["HEADLESS-1", "HEADLESS-3"] {
+        assert_ne!(sway.centre(output), RED, "{output} is not drawn on");
+    }
+    let drawn: Vec<String> = drawn_on()
+        .into_iter()
+        .filter(|(_, _, wallpaper)| *wallpaper)
+        .map(|(name, _, _)| name)
+        .collect();
+    assert_eq!(drawn, ["HEADLESS-2"]);
+    assert_eq!(daemon.stop().code(), Some(0));
+}
