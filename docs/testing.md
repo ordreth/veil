@@ -13,6 +13,7 @@ veil is checked by automated tests only. A behaviour or a number counts as check
 | The package, its plugins, completions and man pages | `nix flake check` | CI, job `nix flake check` |
 | The oldest supported Rust | `nix develop .#msrv -c cargo check --locked --all-targets` | CI, job `build with the oldest supported Rust` |
 | The release build against Debian 12's GStreamer | `scripts/release/build.sh --out dist` (Docker) | CI, job `release build (Debian 12 container)` |
+| The README's installation on each distribution it names: the tarball with `install.sh` (Debian 12 and 13, Ubuntu 22.04 and 24.04, Fedora 44, Arch Linux) and the build from source (Arch Linux, Debian 13, Ubuntu 26.04, Fedora 44), then a picture, an H.264 and a VP9 clip in a headless sway | `scripts/release/distro-check.sh` in a container of each (it installs packages; the commands and packages come from `README.md` itself) | CI, workflow `Installation on distributions`: weekly, by hand, and for a version tag |
 | Licences and advisories of the dependencies | `cargo deny --locked check` | CI, job `cargo deny` |
 
 `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` run in CI as well. The headless tests are ignored by a plain `cargo test` because they need sway, `grim` and the other tools of the `headless` dev shell. The GPU tests are ignored too, and are a test binary of their own (`tests/gpu.rs`), so that CI's `--test headless -- --ignored` leaves them out; they take the render node of the first Intel or AMD GPU, or the one in `VEIL_TEST_RENDER_NODE`.
@@ -71,9 +72,7 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 ### Checks to be turned into tests
 
-These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
-
-- **The installation on distributions:** the README's packages and build from source, and the release tarball with `install.sh`, on each distribution the README names. CI builds and tests on Debian 12 only.
+None are left: every check that was once made by hand (their procedures are in the history of `docs/manual-tests.md`) is now a test or a script above. A new feature comes with its test.
 
 ### Not covered by any test
 

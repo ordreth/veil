@@ -1,0 +1,86 @@
+name: Installation on distributions
+
+# The README's installation on each distribution it names, in a container of
+# that distribution (scripts/release/distro-check.sh, which takes the
+# packages and commands from README.md itself): the release tarball with its
+# install.sh, and the build from source. Then a picture, an H.264 clip and a
+# VP9 clip in a headless sway, as an ordinary user. Weekly, by hand, and for
+# a version tag: the containers install from the distributions' mirrors, so
+# a run says as much about them as about veil.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  media:
+    name: test media
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v30
+      - run: nix develop .#headless --command scripts/release/test-media.sh media
+      - uses: actions/upload-artifact@v4
+        with:
+          name: media
+          path: media/
+          if-no-files-found: error
+
+  tarball:
+    name: release tarball (x86_64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # The release build; its tests run in CI and in the release workflow.
+      - run: scripts/release/build.sh --out dist --no-tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  tarball-install:
+    name: tarball on ${{ matrix.image }}
+    needs: [media, tarball]
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The distributions the README lists under "Prebuilt binaries".
+        image: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "fedora:44", "archlinux:latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: media
+          path: media
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball
+          path: dist
+      - run: scripts/release/distro-check.sh tarball dist/*.tar.gz media
+
+  source-build:
+    name: from source on ${{ matrix.image }}
+    needs: media
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The distributions the README lists under "From source".
+        image: ["archlinux:latest", "debian:13", "ubuntu:26.04", "fedora:44"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: media
+          path: media
+      - run: scripts/release/distro-check.sh source media

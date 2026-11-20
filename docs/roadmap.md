@@ -12,7 +12,7 @@ The first public release, 1.0.0-beta.1 (published on 2026-11-04), is a beta, and
 
 ### Tests still to write
 
-The checks that were made by hand when their features were added, and that no test makes yet, are listed in [`testing.md`](testing.md), "Checks to be turned into tests". Each becomes a test before 1.0. What no test can reach (Hyprland's own rendering, graphics cards and architectures CI does not have) is listed there too, under "Not covered by any test", and is not a condition of the release.
+None: since 2026-11-20 every check that was made by hand when its feature was added is a test or a script ([`testing.md`](testing.md)). Three of them had not run in CI when they were written, because they need Nix or containers: the flake checks `video` and `completions`, and the workflow `Installation on distributions`; their first green run completes this. What no test can reach (Hyprland's own rendering, graphics cards and architectures CI does not have, systemd acting on what the daemon tells it) is listed in [`testing.md`](testing.md), "Not covered by any test", and is not a condition of the release.
 
 ### The release workflow
 
@@ -25,7 +25,7 @@ The checks that were made by hand when their features were added, and that no te
 All of these must be true for 1.0:
 
 - CI green on `main`: `cargo fmt --check`, clippy with `-D warnings`, `cargo test`, `nix build`, `cargo deny check`, the MSRV build, and the release build.
-- Every check of [`testing.md`](testing.md), "Checks to be turned into tests", is a test, among them a crash that recovers by itself: under the systemd unit the daemon comes back with its saved wallpaper.
+- Every check once made by hand is a test (done 2026-11-20, [`testing.md`](testing.md)), green in CI, the flake checks and the workflow `Installation on distributions` included. Of a crash that recovers by itself, the daemon's part is tested (it comes back with its saved wallpapers after `kill -9`, and tells systemd what the unit relies on); systemd's restart itself cannot run where the tests do.
 - Soak: flat resident memory, threads and descriptors over 24 hours of a looping video and over 500 wallpaper switches (`scripts/bench/soak.sh loop --duration 86400`, once with the hardware decoder and once with `GST_PLUGIN_FEATURE_RANK=nvh264dec:0`, which crept for its first minutes; `scripts/bench/soak.sh switch`; both with the shipped `MALLOC_ARENA_MAX=1`).
 - Idle: 0.0 % CPU for static images and for fully covered or paused video, as the headless tests measure it.
 - Every example in the documents is run by a test, as those of [`ipc.md`](ipc.md) are.
