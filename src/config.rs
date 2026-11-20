@@ -60,7 +60,7 @@ pub struct DaemonArgs {
     #[arg(long, value_enum, value_name = "WHEN")]
     pub pause_on: Option<PauseOn>,
 
-    /// Seconds a video may go without the compositor taking its frames (the screen is locked, the monitor is off) before it is stopped and its pipeline released; it starts again from the beginning when its output shows it again. 0 never stops it [default: the config file's, else 2].
+    /// Seconds a video may go without the compositor taking its frames (the screen is locked, the monitor is off) before it is stopped and its pipeline released; it starts again from the beginning when its output shows it again. Also how long the video of an output that went away (unplugged, disabled) is kept, paused, to go on where it was when the output is back. 0 never stops it, and keeps it until the output is back [default: the config file's, else 2].
     #[arg(long, value_name = "SECONDS", value_hint = ValueHint::Other)]
     pub release_unseen_after: Option<u64>,
 

@@ -981,6 +981,10 @@ impl FakeManager {
             let mut buffer = [0u8; 4096];
             while let Ok(length) = socket.recv(&mut buffer) {
                 let message = String::from_utf8_lossy(&buffer[..length]).into_owned();
+                // Logged first: whoever gets the status counts this message.
+                log.lock()
+                    .expect("the log")
+                    .push((std::time::Instant::now(), message.clone()));
                 if message.lines().any(|line| line == "READY=1") {
                     let mut stream = std::os::unix::net::UnixStream::connect(&control)
                         .expect("connect to the daemon");
@@ -989,9 +993,6 @@ impl FakeManager {
                         .expect("ask for the status");
                     let _ = ready.send(result(sway::read_response(&mut stream)));
                 }
-                log.lock()
-                    .expect("the log")
-                    .push((std::time::Instant::now(), message));
             }
         });
         Self {
@@ -1369,5 +1370,61 @@ fn output_names_that_are_not_there_fail_as_the_guide_says() {
             "{command:?}: {refused:?}"
         );
     }
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+/// The centre of the bright pixels of `shot`: where the ball of
+/// `videotestsrc pattern=ball` is.
+fn ball_centre(shot: &image::RgbImage) -> (f64, f64) {
+    let (mut sum_x, mut sum_y, mut count) = (0.0, 0.0, 0.0);
+    for (x, y, pixel) in shot.enumerate_pixels() {
+        if pixel.0.iter().all(|&channel| channel > 128) {
+            sum_x += f64::from(x);
+            sum_y += f64::from(y);
+            count += 1.0;
+        }
+    }
+    assert!(count > 0.0, "no ball on screen");
+    (sum_x / count, sum_y / count)
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn a_video_goes_on_where_it_was_when_its_output_comes_back() {
+    let sway = Sway::start("comeback", &[(640, 360)]);
+    let daemon = sway.daemon(&["--input", arg(&ball()), "--release-unseen-after", "2"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    std::thread::sleep(Duration::from_millis(1500));
+    // Paused by hand: the frame on screen is the one the video is at.
+    sway.veil_ok(&["pause"]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+    std::thread::sleep(Duration::from_millis(300));
+    let before = sway.shot("HEADLESS-1");
+
+    // Away for a moment: the same frame when it is back, not the first one.
+    sway.msg(&["output", "HEADLESS-1", "disable"]);
+    sway.wait_for_state("HEADLESS-1", State::Disconnected);
+    sway.msg(&["output", "HEADLESS-1", "enable"]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+    // The ball where it was, give or take the one frame that the compositor
+    // may not have drawn while the video paused; from the start it is a
+    // ball's width away.
+    let (was, is) = (ball_centre(&before), ball_centre(&sway.shot("HEADLESS-1")));
+    let moved = ((was.0 - is.0).powi(2) + (was.1 - is.1).powi(2)).sqrt();
+    assert!(moved <= 8.0, "the ball was at {was:?} and is at {is:?}");
+    assert_eq!(daemon.logged("the video goes on at"), 1, "{}", daemon.log());
+    sway.veil_ok(&["resume"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+
+    // Away for longer than an unseen video is kept: let go, and started
+    // again when the output is back.
+    sway.msg(&["output", "HEADLESS-1", "disable"]);
+    sway.wait_for_state("HEADLESS-1", State::Disconnected);
+    daemon.wait_for_log("starts again from the beginning when the output is back");
+    sway.msg(&["output", "HEADLESS-1", "enable"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+    assert_eq!(daemon.logged("the video goes on at"), 1, "{}", daemon.log());
     assert_eq!(daemon.stop().code(), Some(0));
 }

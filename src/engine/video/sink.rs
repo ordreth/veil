@@ -122,6 +122,14 @@ impl PlaneSink {
         state.plane.take()
     }
 
+    /// Where in the video the frame on screen is (its stream time), if the
+    /// sink shows one. Neither a paused pipeline's position nor the sink's
+    /// last sample is this: the sink may hold a later frame that it could
+    /// not show yet.
+    pub(super) fn shown_position(&self) -> Option<gst::ClockTime> {
+        self.imp().state().shown_at
+    }
+
     /// Shows the frame on screen again, laid out anew. For a layout that
     /// changed (the surface was resized) while no new frame comes: a paused
     /// video. Nothing happens while the compositor has not taken the frame
@@ -258,6 +266,8 @@ struct State {
     /// paused (preroll) is prepared and rendered again when the video plays,
     /// and is neither converted nor shown twice.
     shown: Option<FrameId>,
+    /// Where in the video the frame on screen is (its stream time).
+    shown_at: Option<gst::ClockTime>,
 }
 
 impl State {
@@ -267,6 +277,7 @@ impl State {
         self.canvas_size = (0, 0);
         self.prepared = None;
         self.shown = None;
+        self.shown_at = None;
     }
 
     fn report_move(&self) {
@@ -902,6 +913,12 @@ mod imp {
                         state.report_move();
                     }
                     state.shown = Some(frame);
+                    state.shown_at = buffer.pts().and_then(|pts| {
+                        self.obj()
+                            .segment()
+                            .downcast_ref::<gst::ClockTime>()?
+                            .to_stream_time(pts)
+                    });
                     Ok(gst::FlowSuccess::Ok)
                 }
                 // No surface, no free buffer, or the frame before is not

@@ -553,6 +553,25 @@ pub trait WallpaperEngine {
     /// after a later `attach` to a new surface. Calling it twice is harmless.
     fn detach(&mut self);
 
+    /// Like `detach`, for a surface whose output went away and may come back
+    /// (unplugged, disabled, or turned into another mode). The engine must stop
+    /// using the surface before this returns, as with `detach`, but may keep
+    /// what it needs to go on where it was on the next surface: a video keeps
+    /// its pipeline, paused, and the next `attach` plays on from there. What
+    /// it keeps it holds until then, or until `drop_set_aside`.
+    fn set_aside(&mut self) {
+        self.detach();
+    }
+
+    /// When the engine kept something for its next surface (`set_aside`), if
+    /// it did.
+    fn set_aside_since(&self) -> Option<std::time::Instant> {
+        None
+    }
+
+    /// Lets go of what `set_aside` kept: the next `attach` starts afresh.
+    fn drop_set_aside(&mut self) {}
+
     /// Like `detach`, for a surface that stays but that the compositor does
     /// not draw (a locked session, a monitor that is off). The engine may keep
     /// its picture on the surface, so the compositor has it to show when it

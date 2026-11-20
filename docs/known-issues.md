@@ -150,7 +150,7 @@ coredumpctl info veil                  # shows output_done on thread GstWlDispla
 
 ## 2. A video pipeline cannot move to another surface
 
-**Status:** no longer forced since veil shows its videos itself (2026-11-09, entry 1); the design below is kept. `PlaneSink` can be given another plane, so a pipeline could be kept while its output is away and moved to the output's new surface, and a video would then go on where it was instead of starting again. Not done: a pipeline kept for an output that is gone holds its memory and its threads.
+**Status:** fixed (2026-11-20). Since veil shows its videos itself (2026-11-09, entry 1), a pipeline can move to another surface. When an output goes away, its video's pipeline is kept, paused at the frame on screen and without its plane (`VideoEngine::set_aside`), and the output's next surface gets it back with a seek to that frame: the video goes on where it was (`a_video_goes_on_where_it_was_when_its_output_comes_back` in `tests/headless.rs`). A kept pipeline holds its memory and its threads, so it is let go after `--release-unseen-after` (2 s by default), as an unseen video is, and an output that stays away longer gets the video from its beginning. What follows is the history.
 **Last checked:** 2026-10-10, GStreamer 1.28.7.
 
 `waylandsink` cannot change its window handle: a second `set_window_handle` only logs "changing window handle is not supported". It also keeps its window and display objects until the element is finalized, even in the `Null` state.

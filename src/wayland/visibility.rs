@@ -127,8 +127,10 @@ const UNSEEN_TICK: Duration = Duration::from_secs(1);
 
 impl AppState {
     /// Arms the timer that releases videos whose surface the compositor does
-    /// not draw, unless it is armed or turned off. It ends by itself once no
-    /// video plays; `with_target` arms it again when one does.
+    /// not draw, and videos kept for an output that went away, unless it is
+    /// armed or turned off. It ends by itself once no video plays or is kept;
+    /// `with_target` arms it again when one plays, and so does the release of
+    /// a surface.
     pub(super) fn watch_unseen(&mut self) {
         if self.unseen_timer_armed || self.release_unseen_after.is_none() {
             return;
@@ -162,6 +164,21 @@ impl AppState {
         let mut playing = false;
         for screen in &mut self.screens {
             let Some(surface) = &mut screen.surface else {
+                // A video kept for an output that went away is let go after as
+                // long as an unseen one.
+                if let Some(since) = screen.render.set_aside_since() {
+                    if now.saturating_duration_since(since) < after {
+                        playing = true;
+                    } else {
+                        screen.render.drop_set_aside();
+                        tracing::info!(
+                            "{} has been gone for {} s; its video is let go, and starts again \
+                             from the beginning when the output is back",
+                            screen.key,
+                            after.as_secs()
+                        );
+                    }
+                }
                 continue;
             };
             if !screen.render.plays_video() {

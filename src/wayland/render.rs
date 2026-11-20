@@ -270,6 +270,18 @@ impl RenderState {
         true
     }
 
+    /// Since when the wallpaper keeps something for the next surface of its
+    /// output (`WallpaperEngine::set_aside`), if it does.
+    pub fn set_aside_since(&self) -> Option<std::time::Instant> {
+        self.engine.set_aside_since()
+    }
+
+    /// Lets go of what the wallpaper kept for the next surface: it starts
+    /// afresh there.
+    pub fn drop_set_aside(&mut self) {
+        self.engine.drop_set_aside();
+    }
+
     /// The compositor draws the surface again (a frame callback of the surface
     /// was answered):
     /// a wallpaper released by `release_unseen` is attached at the next
@@ -511,7 +523,9 @@ impl RenderState {
     /// wallpaper, as if it had been set while there was no surface. Returns
     /// whether that happened.
     pub fn release(&mut self) -> bool {
-        self.engine.detach();
+        // The wallpaper may go on where it was on the next surface (a video
+        // keeps its pipeline); one that waited to replace it starts afresh.
+        self.engine.set_aside();
         let promoted = match self.incoming.take() {
             Some((mut engine, _)) => {
                 engine.detach();

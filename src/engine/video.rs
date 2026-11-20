@@ -338,12 +338,14 @@ fn log_video_decoder(pipeline: &gst::Element) {
     });
 }
 
-/// One GStreamer pipeline, bound to at most one Wayland surface for its whole life.
+/// One GStreamer pipeline, shown on one Wayland surface at a time.
 ///
-/// When the surface goes away (its output was unplugged) the whole player is
-/// dropped, and a new one is built for the next surface, so a pipeline holds
-/// nothing while there is nothing to show it on. This is not a loop: loops
-/// still seek and never rebuild the pipeline.
+/// When the surface goes away because its output did (unplugged, disabled),
+/// the player is kept, paused where it was and without its plane
+/// (`VideoEngine::set_aside`), and the next surface gets it back: the video
+/// goes on from there. A player kept for longer than the daemon keeps an
+/// unseen video is dropped, and a new one is built for the next surface.
+/// Loops seek and never rebuild the pipeline.
 struct Player {
     pipeline: gst::Element,
     /// veil's `PlaneSink`; in the tests, which have no compositor, a
@@ -362,6 +364,16 @@ struct Player {
     /// Whether the pipeline is to play or to stay paused, shared with the bus
     /// thread.
     wanted: Arc<Wanted>,
+    /// Set while the player waits, paused and without a plane, for the
+    /// surface of an output that went away (`VideoEngine::set_aside`).
+    kept: Option<Kept>,
+}
+
+/// Where a kept player was, and since when it waits.
+#[derive(Debug, Clone, Copy)]
+struct Kept {
+    position: gst::ClockTime,
+    since: Instant,
 }
 
 /// What the event loop wants of a pipeline once it has its first frame. The bus
@@ -424,6 +436,7 @@ impl Player {
             background_drawn: false,
             watch: None,
             wanted: Arc::default(),
+            kept: None,
         })
     }
 
@@ -526,6 +539,9 @@ impl BusWatch {
         let bus = pipeline
             .bus()
             .ok_or_else(|| VeilError::Gstreamer("Pipeline has no bus".into()))?;
+        // The bus of a kept pipeline was set flushing when its last thread
+        // ended, so that nothing of that time is read as news now.
+        bus.set_flushing(false);
         let stop = Arc::new(AtomicBool::new(false));
         let thread = std::thread::Builder::new()
             .name(BUS_THREAD.into())
@@ -1060,10 +1076,10 @@ impl VideoEngine {
         })
     }
 
-    /// The pipeline to attach to a surface of `size` logical pixels at `scale`.
-    /// A pipeline serves one surface only (see `Player`): the one built by `new`
-    /// is used if it has no window yet; after `detach`, or if the current one
-    /// already has a window, a new one is built for this surface.
+    /// The pipeline to attach to a surface of `size` logical pixels at `scale`:
+    /// the one built by `new`, or one kept by `set_aside`, if there is one
+    /// without a plane; after `detach`, or if the current one has a plane, a
+    /// new one is built for this surface.
     fn fresh_player(
         &mut self,
         size: (u32, u32),
@@ -1147,7 +1163,24 @@ impl VideoEngine {
         // refused at once (a file that cannot be opened): the element that
         // refuses says why in an error message, and the bus thread passes that
         // on as the failed start. If no message comes, its deadline does.
-        if let Err(e) = player.pipeline.set_state(gst::State::Paused) {
+        //
+        // A kept pipeline is in `Paused` already: a seek to where it was
+        // gives it its first frame on this plane, and ends with the same
+        // message.
+        if let Some(kept) = player.kept.take() {
+            tracing::debug!(
+                "the video goes on at {} on its new surface",
+                kept.position.display()
+            );
+            if let Err(e) = player.pipeline.seek_simple(
+                gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
+                kept.position,
+            ) {
+                tracing::debug!(
+                    "the kept video pipeline does not seek ({e}); the bus will say why"
+                );
+            }
+        } else if let Err(e) = player.pipeline.set_state(gst::State::Paused) {
             tracing::debug!("the video pipeline does not start ({e}); the bus will say why");
         }
         Ok(Attached::Starting)
@@ -1213,6 +1246,72 @@ impl WallpaperEngine for VideoEngine {
     fn detach(&mut self) {
         self.player = None;
         self.close_parked();
+    }
+
+    /// Keeps a video that plays for the output's next surface: its bus thread
+    /// ends, the pipeline stays in `Paused` where it was, and its plane, a
+    /// subsurface of the surface that goes away, is closed. A video that has
+    /// not taken over its surface yet is dropped, as by `detach`.
+    fn set_aside(&mut self) {
+        self.close_parked();
+        let Some(player) = &mut self.player else {
+            return;
+        };
+        if !player.attached || !player.wanted.taken_over.load(Ordering::Acquire) {
+            self.player = None;
+            return;
+        }
+        // The frame on screen, which a seek to the pipeline's position might
+        // not show again.
+        let position = player
+            .sink
+            .downcast_ref::<PlaneSink>()
+            .and_then(PlaneSink::shown_position)
+            .or_else(|| player.pipeline.query_position::<gst::ClockTime>())
+            .unwrap_or(gst::ClockTime::ZERO);
+        // The bus thread first, so that it restarts nothing meanwhile.
+        if let Some(watch) = &player.watch {
+            watch.stopping();
+        }
+        if let Err(e) = player.pipeline.set_state(gst::State::Paused) {
+            tracing::debug!("the video pipeline does not pause ({e}); it is dropped");
+            self.player = None;
+            return;
+        }
+        player.watch = None;
+        if let Some(bus) = player.pipeline.bus() {
+            // What the pipeline posts from now on is of no interest.
+            bus.set_flushing(true);
+        }
+        if let Some(sink) = player.sink.downcast_ref::<PlaneSink>() {
+            sink.detach();
+        }
+        player.geometry.update(|state| state.signal = None);
+        player.wanted.taken_over.store(false, Ordering::Release);
+        player.attached = false;
+        player.background_drawn = false;
+        player.kept = Some(Kept {
+            position,
+            since: Instant::now(),
+        });
+        tracing::debug!(
+            "the video is kept at {}, paused, for the output's next surface",
+            position.display()
+        );
+    }
+
+    fn set_aside_since(&self) -> Option<Instant> {
+        Some(self.player.as_ref()?.kept?.since)
+    }
+
+    fn drop_set_aside(&mut self) {
+        if self
+            .player
+            .as_ref()
+            .is_some_and(|player| player.kept.is_some())
+        {
+            self.player = None;
+        }
     }
 
     /// Drops the pipeline, but keeps its plane with the last frame on the
@@ -2155,6 +2254,7 @@ mod tests {
             background_drawn: false,
             watch: Some(watch),
             wanted,
+            kept: None,
         };
         (player, frames, reports)
     }

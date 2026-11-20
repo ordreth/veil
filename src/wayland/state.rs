@@ -352,9 +352,14 @@ impl AppState {
         // surface and holds a raw pointer to it. This also forgets the size, so
         // nothing is drawn until the next surface is configured.
         let promoted = screen.render.release();
+        let kept = screen.render.set_aside_since().is_some();
         // So does every engine that is still being shut down on a thread of its
         // own after it was shown here: this waits for them.
         self.surface_released(key, promoted);
+        if kept {
+            // A video kept for the output's return is let go if it stays away.
+            self.watch_unseen();
+        }
         // Then the viewport and fractional-scale objects, the surface itself
         // and its buffers (`OutputSurface` drops them in that order). The
         // callback dies with the surface, so the next video requests one.
