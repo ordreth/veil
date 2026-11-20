@@ -2842,11 +2842,9 @@ mod tests {
     fn a_pipeline_that_was_only_built_has_no_thread_and_is_freed() {
         let _counting = BUS_THREADS.lock().unwrap_or_else(PoisonError::into_inner);
         gst::init().expect("gstreamer init");
-        for factory in ["playbin"] {
-            if gst::ElementFactory::find(factory).is_none() {
-                eprintln!("skipping: GStreamer element '{factory}' is not installed");
-                return;
-            }
+        if gst::ElementFactory::find("playbin").is_none() {
+            eprintln!("skipping: GStreamer element 'playbin' is not installed");
+            return;
         }
 
         // What `VideoEngine::new` builds to validate a file. Nothing is played,
@@ -2878,11 +2876,9 @@ mod tests {
     #[test]
     fn a_pipeline_is_reused_until_it_has_a_window_and_rebuilt_after_detach() {
         gst::init().expect("gstreamer init");
-        for factory in ["playbin"] {
-            if gst::ElementFactory::find(factory).is_none() {
-                eprintln!("skipping: GStreamer element '{factory}' is not installed");
-                return;
-            }
+        if gst::ElementFactory::find("playbin").is_none() {
+            eprintln!("skipping: GStreamer element 'playbin' is not installed");
+            return;
         }
 
         // Only the path has to exist: the pipeline is built but never started.
@@ -3001,11 +2997,9 @@ mod tests {
     #[test]
     fn attach_needs_a_real_surface() {
         gst::init().expect("gstreamer init");
-        for factory in ["playbin"] {
-            if gst::ElementFactory::find(factory).is_none() {
-                eprintln!("skipping: GStreamer element '{factory}' is not installed");
-                return;
-            }
+        if gst::ElementFactory::find("playbin").is_none() {
+            eprintln!("skipping: GStreamer element 'playbin' is not installed");
+            return;
         }
 
         let path =

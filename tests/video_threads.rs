@@ -35,11 +35,9 @@ fn file_descriptors() -> usize {
 #[test]
 fn a_hundred_engines_that_are_never_shown_leave_no_thread_or_descriptor_behind() {
     gst::init().expect("gstreamer init");
-    for factory in ["playbin"] {
-        if gst::ElementFactory::find(factory).is_none() {
-            eprintln!("skipping: GStreamer element '{factory}' is not installed");
-            return;
-        }
+    if gst::ElementFactory::find("playbin").is_none() {
+        eprintln!("skipping: GStreamer element 'playbin' is not installed");
+        return;
     }
 
     // Only the path has to exist: the pipelines are built but never started.
