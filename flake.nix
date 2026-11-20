@@ -45,8 +45,8 @@
         };
 
         # `nix flake check`: the package (its build runs `cargo test`, with
-        # the GStreamer plugins), clippy, rustfmt, and the plugin set the
-        # wrapped binary is given.
+        # the GStreamer plugins), clippy, rustfmt, the plugin set the wrapped
+        # binary is given, and a video played with it.
         checks = {
           package = veil;
 
@@ -90,6 +90,18 @@
               ./inspect --exists "$element" || { echo "missing element: $element"; exit 1; }
             done
             test -s "$XDG_CACHE_HOME/veil/gstreamer-registry.bin"
+            touch $out
+          '';
+
+          # A video plays with the package's wrapper in an empty environment
+          # (nix/checks/video.sh): a headless sway that renders on the CPU,
+          # and the daemon and its client given only HOME, XDG_RUNTIME_DIR
+          # and WAYLAND_DISPLAY, so everything else comes from the wrapper.
+          video = pkgs.runCommand "veil-video"
+            {
+              nativeBuildInputs = [ pkgs.sway pkgs.jq pkgs.gst_all_1.gstreamer ];
+            } ''
+            bash ${./nix/checks/video.sh} ${veil}/bin/veil
             touch $out
           '';
 
