@@ -160,10 +160,9 @@ pub struct Monitor {
     pub disabled: bool,
     #[serde(rename = "activeWorkspace")]
     pub active_workspace: WorkspaceRef,
-    /// A special workspace shown over the active one; id `0` when there is
-    /// none.
+    /// A special workspace shown over the active one.
     #[serde(rename = "specialWorkspace", default)]
-    pub special_workspace: Option<WorkspaceRef>,
+    pub special_workspace: Option<SpecialWorkspace>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -171,6 +170,14 @@ pub struct WorkspaceRef {
     pub id: i64,
     #[serde(default)]
     pub name: String,
+}
+
+/// A monitor's special workspace. When none is shown, Hyprland 0.56 gives it
+/// id `0` and 0.57 leaves the id out.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpecialWorkspace {
+    #[serde(default)]
+    pub id: i64,
 }
 
 /// A window, as `j/clients` describes it.
@@ -437,6 +444,40 @@ configreloaded>>
         let snapshot = parse_replies(monitors.as_bytes(), reply.as_bytes()).expect("valid answers");
         assert_eq!(snapshot["HDMI-A-1"].workspace, "4");
         assert!(snapshot["HDMI-A-1"].fullscreen);
+    }
+
+    #[test]
+    fn hyprland_0_57_leaves_the_id_of_no_special_workspace_out() {
+        // As Hyprland 0.57.2 describes a laptop's panel (trimmed).
+        let monitors = r#"[{
+            "id":0,"name":"eDP-1","description":"x","width":1920,"height":1080,
+            "refreshRate":144.00200,"x":0,"y":0,
+            "activeWorkspace":{"address":"1","id":1,"type":"normal","name":"1"},
+            "specialWorkspace":{"address":"","type":"","name":""},
+            "reserved":[0,24,0,0],"scale":1,"transform":0,"focused":true,"dpmsStatus":true,
+            "solitary":"0","solitaryBlockedBy":["WINDOWED","CANDIDATE"],"disabled":false,
+            "mirrorOf":"none","hardwareDetails":{"backend":"drm","hdr":false}
+        }]"#;
+        // Two tiled windows with gaps, as 0.57.2 describes them (trimmed).
+        let window = |x: i64| {
+            format!(
+                r#"{{"address":"0x1","mapped":true,"hidden":false,"visible":true,"at":[{x},34],
+                "size":[943,1036],"workspace":{{"address":"1","id":1,"type":"normal","name":"1"}},
+                "floating":false,"monitor":0,"class":"kitty","title":"~","pinned":false,
+                "fullscreen":0,"fullscreenClient":0,"fullscreenHandler":"default","grouped":[],
+                "tags":[],"stableId":"1800005e"}}"#
+            )
+        };
+        let tiled = clients(&[window(10), window(967)]);
+        let snapshot = parse_replies(monitors.as_bytes(), tiled.as_bytes()).expect("valid answers");
+        assert_eq!(snapshot["eDP-1"].workspace, "1");
+        assert!(!snapshot["eDP-1"].fullscreen);
+        assert!(!snapshot["eDP-1"].covered);
+
+        let full = clients(&[client(1, [0.0, 0.0], [1920.0, 1080.0], 2)]);
+        let snapshot = parse_replies(monitors.as_bytes(), full.as_bytes()).expect("valid answers");
+        assert!(snapshot["eDP-1"].fullscreen);
+        assert!(snapshot["eDP-1"].covered);
     }
 
     #[test]
