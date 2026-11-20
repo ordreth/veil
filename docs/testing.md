@@ -29,7 +29,7 @@ veil is checked by automated tests only. A behaviour or a number counts as check
 | `tests/systemd.rs` | the systemd unit agrees with the binary: readiness, the exit statuses not worth a restart, the allocator setting |
 | `tests/video_threads.rs` | video engines that are thrown away leave no threads or descriptors behind |
 | `tests/notices.rs` | `THIRD-PARTY-NOTICES` matches `Cargo.lock` |
-| `nix flake check` | the package builds and passes its tests; the GStreamer elements veil uses are found through the package's wrapper, where its registry goes, the allocator default; the completions load in bash, zsh, fish and nushell; the man pages have no roff errors; a video plays with the package's wrapper in an empty environment (`nix/checks/video.sh`: a headless sway on the CPU, the daemon and `veil status` given only `HOME`, `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`) |
+| `nix flake check` | the package builds and passes its tests; the GStreamer elements veil uses are found through the package's wrapper, where its registry goes, the allocator default; what the completions offer (`nix/checks/completions.sh`): bash, zsh (in a pseudo-terminal) and fish complete `veil `, `--pause-on`, `--mode` and `veil completions` with the subcommands and values veil takes, and nushell declares every subcommand; the man pages have no roff errors; a video plays with the package's wrapper in an empty environment (`nix/checks/video.sh`: a headless sway on the CPU, the daemon and `veil status` given only `HOME`, `XDG_RUNTIME_DIR` and `WAYLAND_DISPLAY`) |
 
 The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a headless sway of their own, run the real `veil daemon` and commands in it, and read the outputs with `grim`:
 
@@ -69,7 +69,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **What each shell offers for completion** (the flake check only loads the scripts).
 - **The failures of [`troubleshooting.md`](troubleshooting.md):** a missing plugin set, demuxer or decoder, a stale registry, another wallpaper program, an unknown output name, with the messages the guide quotes.
 - **The installation on distributions:** the README's packages and build from source, and the release tarball with `install.sh`, on each distribution the README names. CI builds and tests on Debian 12 only.
 

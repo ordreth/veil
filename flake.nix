@@ -105,7 +105,9 @@
             touch $out
           '';
 
-          # The completions the package installs load in their shells, and
+          # The completions the package installs load in their shells and
+          # offer what veil takes (nix/checks/completions.sh: bash, zsh and
+          # fish complete command lines; nushell declares every command), and
           # its man pages have no roff errors (mandoc's warnings are about
           # the empty date and the paragraph macros of clap_mangen).
           completions = pkgs.runCommand "veil-completions"
@@ -114,10 +116,9 @@
             } ''
             share=${veil}/share
             bash -n $share/bash-completion/completions/veil.bash
-            ${pkgs.bashInteractive}/bin/bash -c "source $share/bash-completion/completions/veil.bash && complete -p veil"
             zsh -n $share/zsh/site-functions/_veil
-            HOME=$TMPDIR fish -c "source $share/fish/vendor_completions.d/veil.fish; complete -C 'veil daemon --pause-on '" | grep -q covered
-            HOME=$TMPDIR nu --no-config-file -c "source $share/nushell/vendor/autoload/veil.nu; scope commands | where name == 'veil config check' | length" | grep -qx 1
+            # An interactive bash first on PATH: the script needs `compgen`.
+            PATH=${pkgs.bashInteractive}/bin:$PATH bash ${./nix/checks}/completions.sh $share
             test -e $share/man/man1/veil.1.gz
             test -e $share/man/man1/veil-config-check.1.gz
             for page in $share/man/man1/*.1.gz; do zcat $page > $(basename $page .gz); done
