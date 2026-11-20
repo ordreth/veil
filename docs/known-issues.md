@@ -93,7 +93,7 @@ A fix has to make `output_done` safe to call more than once per output. Replacin
 - The video pipeline (and with it the sink and its thread) exists only while there is a surface to play on. When the wallpaper's output goes away, `VideoEngine::detach` drops the pipeline before the surface is destroyed, and a new pipeline is built when the output returns. Nothing can crash while the output is away.
 - A video whose frames the compositor has refused for 2 seconds (`--release-unseen-after`) is stopped and its pipeline dropped, and built again when the output is drawn again. A monitor that has been off for longer than that has no sink to kill when it comes back. This is not a fix: it does not cover a monitor switched off and on within 2 seconds, a video paused by the automatic pause (not watched), `--release-unseen-after 0`, or any other output change.
 - The wallpaper of each output is saved (`$XDG_STATE_HOME/veil/state.json`), and a daemon started again without `--input` shows the same wallpapers. Checked in a headless sway on 2026-10-16: a scale change of the output a video played on killed the daemon (status 139), and the daemon started again by hand showed the image and the video it had.
-- The systemd user unit (`contrib/systemd/veil.service`, `Restart=on-failure`, `RestartSec=2`) restarts the daemon after the crash, and it comes back with those wallpapers: option D is done. Checked in a headless sway under the developer's systemd user manager: the scale change of the output a video played on killed the daemon (`code=dumped, status=11/SEGV`), and 2.9 s later the unit was active again with the video playing. This needs the daemon to run under the unit; started by hand, it still has to be started again by hand. On Hyprland this is still to be checked by hand (`manual-tests.md`, "In a real Hyprland session").
+- The systemd user unit (`contrib/systemd/veil.service`, `Restart=on-failure`, `RestartSec=2`) restarts the daemon after the crash, and it comes back with those wallpapers: option D is done. Checked in a headless sway under the developer's systemd user manager: the scale change of the output a video played on killed the daemon (`code=dumped, status=11/SEGV`), and 2.9 s later the unit was active again with the video playing. This needs the daemon to run under the unit; started by hand, it still has to be started again by hand. A test of it is still to be written ([`testing.md`](testing.md), "Checks to be turned into tests").
 - The limitation is stated in the README ("Known limitations"), in the module docs of `src/engine/video.rs`, and here.
 
 ### Options considered
@@ -116,7 +116,7 @@ Option A. Do everything that is possible on veil's side, document the rest, and 
 - A GStreamer release changes `output_done` in `gstwldisplay.c` (check whether the `g_object_steal_data` line is still there).
 - ~~The zero-copy investigation~~: decided on 2026-10-17: veil keeps `waylandsink` for 1.0. The measurements did not make replacing it necessary: what a video costs is the colour conversion, which any sink that shows NVIDIA's frames through shared memory needs (entry 7). Option E stays after 1.0; for 1.0 the answer to this issue is option D (the systemd unit and the saved wallpapers), still to be checked on Hyprland by hand.
 - ~~Multi-monitor support~~: done; measured again (see the second table above). As expected, the bug is the same and meets more setups, because every monitor now plays the video. It is the strongest argument for option B, D or E so far.
-- The saved wallpapers and the systemd unit are done (2026-10-16, see "What veil does about it"): under the systemd unit a crash recovers by itself. Still to be checked on Hyprland by hand.
+- The saved wallpapers and the systemd unit are done (2026-10-16, see "What veil does about it"): under the systemd unit a crash recovers by itself. A test of it is still to be written ([`testing.md`](testing.md), "Checks to be turned into tests").
 
 ### Fixed: veil's own sink (2026-11-09)
 
@@ -261,7 +261,7 @@ If the compositor reports no output name, the output cannot be recognised when i
 
 ## 5. A video that covers the whole surface stands still for a moment at every loop
 
-**Status:** not reproduced since 2026-10-16, with any build, also the one it was found with; kept open until the maintainer has looked for it on Hyprland (`manual-tests.md`, "In a real Hyprland session"). Found on 2026-10-13, and older than that: the build before the error recovery was added behaved the same then.
+**Status:** not reproduced since 2026-10-16, with any build, also the one it was found with; kept open as a record. No test looks for it, and Hyprland, where it would matter most, is not covered by tests ([`testing.md`](testing.md), "Not covered by any test"); it is reopened if it is seen in use. Found on 2026-10-13, and older than that: the build before the error recovery was added behaved the same then.
 **Affects:** videos in `fill` (the default) and `stretch`, and any mode in which the video happens to cover the surface completely. Not `fit` with bars or `center` with a border.
 **Last checked:** 2026-10-16, headless sway 1.12 (pixman renderer, frames through `wl_shm`), GStreamer 1.28.7: not there. **Not checked on Hyprland or on real hardware.**
 
@@ -327,7 +327,7 @@ Keep the loop. Its cost is wake-ups, not CPU: in a headless sway, 160 to 175 wak
 
 ### When to revisit
 
-When the cause is known, or if a later change alters how frames reach the screen. Replacing `waylandsink` (2026-11-09, entry 1) kept everything this entry depends on: the video's subsurface is desynchronized and committed by the sink, as `waylandsink`'s was, and the loop commits veil's surface as before. Whether Hyprland shows the new sink's frames smoothly is to be checked there (`manual-tests.md`). Whatever is tried has to be checked on Hyprland, not only in a headless sway.
+When the cause is known, or if a later change alters how frames reach the screen. Replacing `waylandsink` (2026-11-09, entry 1) kept everything this entry depends on: the video's subsurface is desynchronized and committed by the sink, as `waylandsink`'s was, and the loop commits veil's surface as before. No test covers this: only Hyprland showed the problem, and Hyprland's rendering is not covered by tests ([`testing.md`](testing.md), "Not covered by any test"). A change to the loop passes the headless tests either way, so it is left alone until the cause is known; a regression would show in daily use on Hyprland.
 
 Not tried: committing at the video's frame rate instead of on every frame callback (the fallback considered when the loop was measured). That work was closed on 2026-10-16 without it, by the maintainer's decision, with its goal (wake-ups close to the video's frame rate) not met. It is after 1.0.
 
@@ -385,7 +385,7 @@ When `nvcodec` or the NVIDIA VA driver can hand out dmabufs, when a conversion o
 ## 8. Older GStreamer versions: animated GIFs, and frames dropped on Ubuntu 24.04
 
 **Status:** open, documented (2026-10-19). Upstream, in the distributions' GStreamer and FFmpeg; not in veil. **Affects:** the release tarball (which uses the system's GStreamer) on Debian 12, Ubuntu 22.04 and Ubuntu 24.04. The Nix package brings GStreamer 1.28 and is not affected, nor are Debian 13, Fedora 44 and Arch.
-**Last checked:** 2026-10-19, with the x86_64 tarball of 0.1.0 in a container of each distribution, against a headless sway on the host (`docs/manual-tests.md`, "The release tarball").
+**Last checked:** 2026-10-19, with the x86_64 tarball of 0.1.0 in a container of each distribution, against a headless sway on the host, by hand (not a test: [`testing.md`](testing.md), "Checks to be turned into tests").
 
 ### Symptom
 

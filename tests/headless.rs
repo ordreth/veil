@@ -1,7 +1,7 @@
 //! The real daemon in a real compositor: every test starts a headless sway of
 //! its own (`tests/sway/`), runs `veil daemon` and the commands in it, and
 //! looks at the outputs with `grim`. These are checks that were first made
-//! by hand (`docs/manual-tests.md`).
+//! by hand; `docs/testing.md` lists them.
 //!
 //! They need the tools of the `headless` dev shell, so a plain `cargo test`
 //! skips them (ignored). Run them with

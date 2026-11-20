@@ -2,7 +2,7 @@
 
 What to do when veil does not show what it should: where to look first, the failures that are common enough to have a name, a cheat-sheet of the commands that tell you more, and a table of the compositors and graphics cards veil has been tried on.
 
-The failures below were produced on purpose in a headless sway 1.12 with GStreamer 1.28.7, and the messages are the ones the daemon gave (2026-10-19; how, in [`manual-tests.md`](manual-tests.md), "Troubleshooting"); the table of other messages quotes the code. Log lines are shown without their time stamp. The limitations veil knows about and cannot fix today, such as the crash on a monitor change while a video plays, are in [`known-issues.md`](known-issues.md).
+The failures below were produced on purpose in a headless sway 1.12 with GStreamer 1.28.7, and the messages are the ones the daemon gave (2026-10-19, by hand; a test that produces them is still to be written, [`testing.md`](testing.md)); the table of other messages quotes the code. Log lines are shown without their time stamp. The limitations veil knows about and cannot fix today are in [`known-issues.md`](known-issues.md).
 
 ## Where to look first
 
@@ -189,36 +189,36 @@ Reports go to [Discussions, category "Reports"](https://github.com/ordreth/veil/
 
 ## Support matrix
 
-What was run, where, and by whom. The labels: **Verified** (run and checked by the project), **Reported working** (run once, by the project's tooling or a user, not yet checked again), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below, which is the source of this one.
+What veil is tested on, and what it has been seen working on. The labels: **Tested** (automated tests cover it, in CI unless said otherwise: [`testing.md`](testing.md)), **Reported working** (seen working, in the developer's daily use, a run made once, or a user's report, but no test covers it), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below.
 
 | | Status | What, when |
 |---|---|---|
 | **Compositors** | | |
-| sway (headless, 1.12) | Verified | Every check of `tests/headless.rs` and the measurements; 2026-10-19. |
-| Hyprland 0.56.2 | Reported working | Images, H.264 video on two monitors and the automatic pause, 2026-10-20. Smoothness, lock, DPMS, logout and crash recovery are **Untested**. |
+| sway (headless, 1.12) | Tested | Every test of `tests/headless.rs` and the short soaks, in CI; the measurements. |
+| Hyprland 0.56.2 and 0.57.2 | Reported working | The developer's daily wallpaper. Its backend is tested against a fake Hyprland (`tests/compositor.rs`, `tests/headless.rs`), its rendering is not: smoothness, lock, DPMS and logout are not covered by tests. |
 | river, niri, Wayfire, labwc, other `wlr-layer-shell` compositors | Untested | Should work. No automatic pause (every video counts as visible), only the release of a video nobody is shown. |
 | KDE Plasma (KWin) | Untested | Has `wlr-layer-shell`; nobody has tried. |
 | GNOME (Mutter) | Unsupported | No `wlr-layer-shell`. |
 | **Graphics** | | |
-| NVIDIA (NVDEC) | Reported working | RTX 3060 Ti, driver 595.91.07, sway and Hyprland. Every video frame is converted on the CPU ([known issue 7](known-issues.md)). |
-| Intel, AMD (VA-API) | Untested | The zero-copy path is not verified on any hardware. |
-| Software decoding | Reported working | In the tests and by taking the hardware decoders out ([troubleshooting](#no-hardware-decoding)). |
+| NVIDIA (NVDEC) | Reported working | RTX 3060 Ti, driver 595.91.07, sway and Hyprland. Every video frame is converted on the CPU ([known issue 7](known-issues.md)). CI has no GPU. |
+| Intel (VA-API) | Reported working | Raptor Lake, Mesa 26.3: frames in dmabufs in a headless sway (benched, [`measurements.md`](measurements.md)), and Hyprland 0.57.2, which takes no YUV dmabufs, so its videos are converted on the CPU ([known issue 7](known-issues.md)). A test of the dmabuf path is still to be written. |
+| AMD (VA-API) | Untested | Should take the same path as Intel. |
+| Software decoding | Tested | The headless tests in CI (no GPU there), and by taking the hardware decoders out ([troubleshooting](#no-hardware-decoding)). |
 | **Architectures** | | |
-| x86_64 | Reported working | The tarball in a container of six distributions, 2026-10-19. |
+| x86_64 | Tested | CI. |
 | aarch64 | Untested | The release workflow builds it and runs the tests there; it was never run with a compositor. |
-| **Distributions** (the prebuilt tarball, in a headless sway) | | |
-| Debian 12 and 13, Ubuntu 22.04 and 24.04, Fedora 44, Arch Linux | Reported working | 2026-10-19. Animated GIFs need GStreamer 1.26 or newer, and Ubuntu 24.04 drops frames of 1080p videos ([known issue 8](known-issues.md)). |
-| NixOS (the flake) | Verified | `nix run` and `nix profile add`, with sway and Hyprland: images, video, and a daemon killed with `SIGKILL` replaced by the next one. 2026-10-20 and 2026-11-04. The overlay with `systemd.packages` of the [README](../README.md#installation) was not run on it. |
-
-What a user should know before using veil with several monitors and a video: a monitor that is changed, plugged in or switched on while a video plays crashes the daemon ([known issue 1](known-issues.md)); under the systemd unit it comes back within seconds.
+| **Distributions** | | |
+| Debian 12 | Tested | CI builds the release binary against its GStreamer and runs the tests there (no compositor). |
+| Debian 12 and 13, Ubuntu 22.04 and 24.04, Fedora 44, Arch Linux (the prebuilt tarball, in a headless sway) | Reported working | Run once, 2026-10-19. Animated GIFs need GStreamer 1.26 or newer, and Ubuntu 24.04 drops frames of 1080p videos ([known issue 8](known-issues.md)). |
+| NixOS (the flake) | Tested | `nix flake check` in CI: the package, its plugins, completions and man pages. The developer's daily system, with `nix run` and `nix profile add` seen working (2026-10-20, 2026-11-04). |
 
 ## Compatibility
 
-What veil has been run on, and what worked. **Testers: please report a row** in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports): the compositor and its version, the graphics card and driver, the veil and GStreamer versions (the first line of the log), and for each column whether it worked, with what was tried. "Not yet" means nobody has reported it, not that it fails.
+What veil has been run on, and what worked: the source of the support matrix's "Reported working". **Please report a row** in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports): the compositor and its version, the graphics card and driver, the veil and GStreamer versions (the first line of the log), and for each column whether it worked, with what was tried. "Not yet" means nobody has reported it, not that it fails.
 
 | Compositor | GPU, driver | Images | Video | Decoder (from the log) | Automatic pause | Notes | Checked |
 |---|---|---|---|---|---|---|---|
-| sway 1.12, headless, CPU rendering (`pixman`) | NVIDIA RTX 3060 Ti, 595.91.07 | yes | yes: H.264, HEVC, VP8, VP9, AV1 | `nvh264dec`, `nvh265dec`, `nvav1dec`, `nvvp8dec`, `nvvp9dec` (hardware); software ones when the hardware ones are taken out | yes (sway's IPC) | Where every check of `tests/headless.rs` and the measurements run. Known issue 1: a monitor change while a video plays kills the daemon. Frames are converted on the CPU (known issue 7). | veil 0.1.0, GStreamer 1.28.7, 2026-10-19 |
+| sway 1.12, headless, CPU rendering (`pixman`) | NVIDIA RTX 3060 Ti, 595.91.07 | yes | yes: H.264, HEVC, VP8, VP9, AV1 | `nvh264dec`, `nvh265dec`, `nvav1dec`, `nvvp8dec`, `nvvp9dec` (hardware); software ones when the hardware ones are taken out | yes (sway's IPC) | Where every check of `tests/headless.rs` and the measurements run. Known issue 1: a monitor change while a video plays killed the daemon (fixed since 2026-11-09). Frames are converted on the CPU (known issue 7). | veil 0.1.0, GStreamer 1.28.7, 2026-10-19 |
 | sway 1.12, headless, GPU rendering (`gles2`) | NVIDIA RTX 3060 Ti, 595.91.07 | not yet | not yet | | not yet | The sink pipeline of veil was run here with `gst-launch-1.0` (veil itself was not run): sway offers dmabufs, and takes NV12 ones only with NVIDIA's tiled modifiers. | |
 | sway 1.12, headless, GPU rendering (`gles2` and `vulkan`) | Intel Raptor Lake (i7-13620H), Mesa 26.3 | not yet | yes: H.264, HEVC, VP9, AV1 | `vah264dec`, `vah265dec`, `vavp9dec`, `vaav1dec` (hardware; NVIDIA's decoders taken out) | yes (sway's IPC) | Frames in dmabufs, nothing converted on the CPU (known issue 7): with `vulkan` every video; with `gles2`, which cannot be told a video's colour coding, only BT.601 ones. | veil 1.0.0-beta.1 and the dmabuf path, GStreamer 1.28.8, 2026-11-20 |
 | Hyprland 0.56.2 | NVIDIA RTX 3060 Ti (the machine of the first row) | yes (as the daily wallpaper, through the systemd unit) | yes: H.264 1080p60 on two 1080p monitors at once | `nvh264dec` (hardware) | yes: a fullscreen window paused its output ("cannot be seen; pausing it"), closing it played again; the other output kept playing | About 90 to 99 % of one core for two 1080p60 streams (known issue 7), about 41 % with one output paused. Smoothness without lag (known issue 6), lock, DPMS, logout, crash recovery and a monitor change were not checked on Hyprland. The state veil reads from its IPC matches `hyprctl monitors`. | veil 0.1.0 (a release build of the tree), GStreamer 1.28.7, 2026-10-20 |

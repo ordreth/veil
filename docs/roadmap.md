@@ -1,24 +1,23 @@
 # Roadmap
 
-What is left before veil 1.0, and what is deliberately left for after it. Everything in the feature table of the [README](../README.md) is implemented and tested; what remains before the release is checking by hand where no test can, and publishing.
+What is left before veil 1.0, and what is deliberately left for after it. Everything in the feature table of the [README](../README.md) is implemented and tested; what remains before the release is turning the last checks made by hand into tests, and publishing. veil is checked by automated tests only ([`testing.md`](testing.md)).
 
-**What 1.0 is:** a wallpaper daemon that the user changes by hand (`veil set` and the other commands, a configuration file), that survives restarts and recovers from the GStreamer crash of [known issue 1](known-issues.md) by itself, whose resource claims are measured ([`measurements.md`](measurements.md)), and that is packaged for Nix and as release binaries. Video plays without audio.
+**What 1.0 is:** a wallpaper daemon that the user changes by hand (`veil set` and the other commands, a configuration file), that survives restarts and recovers from a crash by itself, whose resource claims are measured ([`measurements.md`](measurements.md)), and that is packaged for Nix and as release binaries. Video plays without audio.
 
 ## The beta (1.0.0-beta.1)
 
-The first public release, 1.0.0-beta.1 (published on 2026-11-04), is a beta, and it relaxes the 1.0 checklist below. **Required, and done:** the release workflow run on the release tag itself. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the full checklist of [`manual-tests.md`](manual-tests.md), "In a real Hyprland session" (only part of it was run, see below), the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
+The first public release, 1.0.0-beta.1 (published on 2026-11-04), is a beta, and it relaxes the 1.0 checklist below. **Required, and done:** the release workflow run on the release tag itself. **Not required, and said to be untested in the [support matrix](troubleshooting.md#support-matrix) instead:** the 24-hour soak, a run on ARM, Intel and AMD graphics, other distributions and compositors. The beta is free and source-available ([`LICENSE`](../LICENSE)), takes no issues or pull requests (reports go to GitHub Discussions), and is distributed as the release tarballs, the Nix flake and, after the release, an AUR `veil-bin` package.
 
 ## Before 1.0
 
-### Checks in a real Hyprland session
+### Tests still to write
 
-Almost everything was checked in a headless sway; on Hyprland 0.56.2 only images, a video on two monitors and the pause behind a fullscreen window were run (2026-10-20). The checklist is in [`manual-tests.md`](manual-tests.md), "In a real Hyprland session": the pause behind fullscreen windows, the lock screen and DPMS, whether a video in `fill` stands still at every loop (known issue 5), whether it plays smoothly (known issue 6), the systemd unit, crash recovery, logout, completions, and the Hyprland row of the compatibility table in [`troubleshooting.md`](troubleshooting.md#compatibility). A problem found there is fixed, or recorded as a known issue, before the release.
+The checks that were made by hand when their features were added, and that no test makes yet, are listed in [`testing.md`](testing.md), "Checks to be turned into tests". Each becomes a test before 1.0. What no test can reach (Hyprland's own rendering, graphics cards and architectures CI does not have) is listed there too, under "Not covered by any test", and is not a condition of the release.
 
 ### The release workflow
 
-`.github/workflows/release.yml` ran on GitHub for the tag `v1.0.0-beta.1` (2026-11-04) and published the release as a pre-release with the x86_64 and aarch64 tarballs and `SHA256SUMS` (see [`manual-tests.md`](manual-tests.md), "The release tarball", for what was checked locally before). Before 1.0:
+`.github/workflows/release.yml` ran on GitHub for the tag `v1.0.0-beta.1` (2026-11-04) and published the release as a pre-release with the x86_64 and aarch64 tarballs and `SHA256SUMS`. Before 1.0:
 
-- Run the aarch64 tarball on an ARM machine with a compositor: nothing has shown a picture or a video with it yet.
 - Confirm or change the decision of known issue 8 (animated GIFs and frame drops with the GStreamer of Debian 12 and Ubuntu 22.04 and 24.04: documented, not worked around).
 
 ### Release checklist
@@ -26,14 +25,13 @@ Almost everything was checked in a headless sway; on Hyprland 0.56.2 only images
 All of these must be true for 1.0:
 
 - CI green on `main`: `cargo fmt --check`, clippy with `-D warnings`, `cargo test`, `nix build`, `cargo deny check`, the MSRV build, and the release build.
-- A crash recovers by itself: under the systemd unit the daemon comes back with its saved wallpaper (known issue 1, option D).
+- Every check of [`testing.md`](testing.md), "Checks to be turned into tests", is a test, among them a crash that recovers by itself: under the systemd unit the daemon comes back with its saved wallpaper.
 - Soak: flat resident memory, threads and descriptors over 24 hours of a looping video and over 500 wallpaper switches (`scripts/bench/soak.sh loop --duration 86400`, once with the hardware decoder and once with `GST_PLUGIN_FEATURE_RANK=nvh264dec:0`, which crept for its first minutes; `scripts/bench/soak.sh switch`; both with the shipped `MALLOC_ARENA_MAX=1`).
-- Idle: 0.0 % CPU for static images and for fully covered or paused video.
-- Verified on at least Hyprland and one other wlroots compositor, on Intel, AMD and NVIDIA graphics (or the unsupported ones are documented).
-- Every example in the documents executes as written.
+- Idle: 0.0 % CPU for static images and for fully covered or paused video, as the headless tests measure it.
+- Every example in the documents is run by a test, as those of [`ipc.md`](ipc.md) are.
 - No `unwrap()` in production paths and every `unsafe` documented (the lints in `Cargo.toml` enforce it; confirm that nothing has silenced them).
 - A security review of the control socket ([`SECURITY.md`](../SECURITY.md)).
-- `CODE_OF_CONDUCT.md` names the GitHub account of the maintainer as its contact, private vulnerability reporting is turned on for the repository, and Discussions has its "Reports" category (see [`manual-tests.md`](manual-tests.md), "Governance files").
+- `CODE_OF_CONDUCT.md` names the GitHub account of the maintainer as its contact, private vulnerability reporting is turned on for the repository, and Discussions has its "Reports" category (settings on GitHub).
 - `CHANGELOG.md` and the version in `Cargo.toml` and `flake.nix` are bumped.
 
 ### Open decisions

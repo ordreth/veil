@@ -51,7 +51,7 @@ install -m755 "$root/scripts/release/install.sh" "$dir/install.sh"
 install -m644 "$root/README.md" "$root/CHANGELOG.md" "$root/LICENSE" "$root/ADDITIONAL-PERMISSIONS.md" "$root/THIRD-PARTY-NOTICES" "$dir/"
 install -m644 "$root/contrib/systemd/veil.service" "$dir/contrib/systemd/"
 install -m644 "$root/contrib/config.example.toml" "$dir/contrib/"
-# What a user reads; manual-tests.md is for the people who work on veil.
+# What a user reads; testing.md and roadmap.md are for the people who work on veil.
 for doc in configuration ipc known-issues measurements troubleshooting; do
   install -m644 "$root/docs/$doc.md" "$dir/docs/"
 done

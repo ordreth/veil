@@ -1,6 +1,6 @@
 # Measurements
 
-How much the daemon costs while it shows a wallpaper, measured with `scripts/bench/`. The README's performance goals are checked against these numbers (sub-1% CPU for video, 0% for still images, no growth); where they are not met, this file says so.
+How much the daemon costs while it shows a wallpaper, measured with `scripts/bench/`. The README's performance goals are checked against these numbers (sub-1% CPU for video, 0% for still images, no growth); where they are not met, this file says so. Only numbers from the scripts count ([`testing.md`](testing.md), "Numbers"); the few older ones measured another way are marked as such and kept as history.
 
 ## Running it
 
@@ -95,7 +95,7 @@ The daemon commits its surface at every frame callback while a video plays, so t
 | `still-1080p.png` | after | 1.8 | 0.00 % | none |
 | `h264-1080p60.mp4`, `fill`, 1920x1080 | after | 200.9 | (not compared) | 60.1 |
 
-Measured by hand in the same setup (a 1280x1080 VP8 clip on a 1920x1080 output, 10 to 20 s per run, two rounds alternating the builds): frame callbacks on veil's surface went from 58 per second to none in `fit` and `center` (none in `fill` before either); the CPU of the event loop thread stayed at the resolution of the counter (0.15 to 0.4 %), and so did sway's (7.5 % in `fit`, 0.3 % in `fill`, unchanged).
+Measured without the scripts, kept as history, in the same setup (a 1280x1080 VP8 clip on a 1920x1080 output, 10 to 20 s per run, two rounds alternating the builds): frame callbacks on veil's surface went from 58 per second to none in `fit` and `center` (none in `fill` before either); the CPU of the event loop thread stayed at the resolution of the counter (0.15 to 0.4 %), and so did sway's (7.5 % in `fit`, 0.3 % in `fill`, unchanged).
 
 What it says:
 
@@ -266,11 +266,11 @@ What it says:
 - **The conversion was the whole cost.** Without it, a 1080p video costs 2 to 8 % of a core, about a tenth to a twentieth. What is left is decoding on the GPU, the event loop, and the sink's handling of every frame.
 - **4K at 60 fps plays in full.** Before, the CPU path lost a third of the frames at 175 % (its two converter threads were not enough); now 60 a second at 7 to 9 %.
 - **Less memory.** No `wl_shm` buffers: the frames stay in the decoder's dmabufs, about 20 MiB less at 1080p and 90 MiB less at 4K.
-- **The colours depend on the compositor knowing the coding.** With colour bars coded as BT.709 and as BT.601 (`manual-tests.md`, "Frames in dmabufs"), `vulkan` showed both as ffmpeg decodes them, within 3 of 255, once veil told it the coding. `gles2`, told nothing, showed BT.601 right and BT.709 wrong (red 231 instead of 251, cyan with 20 of red), which is why such a video is converted on the CPU there.
+- **The colours depend on the compositor knowing the coding.** With colour bars coded as BT.709 and as BT.601 (not a test yet: [`testing.md`](testing.md), "Checks to be turned into tests"), `vulkan` showed both as ffmpeg decodes them, within 3 of 255, once veil told it the coding. `gles2`, told nothing, showed BT.601 right and BT.709 wrong (red 231 instead of 251, cyan with 20 of red), which is why such a video is converted on the CPU there.
 
 ## Not measured yet
 
-- A real session (Hyprland with its dmabuf path): `--session`, by the maintainer. The conversion is known to happen there too on NVIDIA (above); what is left is the compositor's own share.
+- A real session (`--session`): it needs a desktop session, which the automated runs do not have ([`testing.md`](testing.md), "Not covered by any test"). The conversion is known to happen there too on NVIDIA (above); what is left is the compositor's own share.
 - AMD GPUs. Intel's VA-API path is in "Frames in dmabufs" above, in a headless sway; not in a real session.
 - A paused video and a released one: the headless tests check them (CPU at most a quarter of playing, and at most 2 ticks in 2 s), but there is no bench run of them.
 - Hours and days: the 24-hour soak of the release checklist ([`roadmap.md`](roadmap.md)), on this machine, also with the software decoder (the slow start of the 1 s clip above).
