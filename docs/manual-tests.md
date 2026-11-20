@@ -128,6 +128,20 @@ To record replies for the tests: `swaymsg -t get_outputs -r`, `swaymsg -t get_tr
 
 In the log, at no time while the video is shown: "has not been shown". With `RUST_LOG=veil=info,veil::wayland::visibility=trace` the frame counts are logged every second: `rendered` grows while the video is shown, `dropped` while it is not.
 
+## Frames in dmabufs
+
+Needs an Intel or AMD GPU with a VA-API driver, and a headless sway that renders on it: `WLR_RENDERER=vulkan` (or `gles2`) and `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128` (the GPU's render node) instead of `WLR_RENDERER=pixman` in the setup above. On a machine that also has an NVIDIA GPU, `GST_PLUGIN_FEATURE_RANK=nvh264dec:0` makes GStreamer pick `vah264dec`. Two clips of colour bars made with ffmpeg's `testsrc2`, one coded as BT.709 and one as BT.601, both limited range and tagged (`-vf scale=out_color_matrix=bt709:out_range=tv,format=yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv`, and `bt601` with `smpte170m`), and ffmpeg's own decode of their first frame as the reference. Screenshots with `grim` after `veil pause`; colours with `magick shot.png -format '%[pixel:p{240,300}]' info:` on a bar.
+
+| Action | Expected |
+|---|---|
+| `veil daemon --input bt709.mp4 --mode fill` on a 1920x1080 output, `vulkan` | the log says `video frames go to the compositor as they are, in dmabufs (NV12:0x0100000000000002, ... Bt709 ...)`; the bars have ffmpeg's colours within 3 (red (253, 0, 0) against (251, 0, 0)) |
+| The same with `bt601.mp4` | `Bt601`, the same colours as ffmpeg's |
+| The same with `gles2` | with `bt601.mp4` as above; with `bt709.mp4` `the compositor cannot be told how the video's colours are coded`, `starting the video pipeline again, to negotiate its frames` (debug), and the video plays, converted on the CPU (with the colours of known issue 9) |
+| `h264-1080p30.mp4` with `--mode fill` on 2560x1080, `center` on 1280x720, `fit` on 2560x1080 | the same picture as the converting build (`--veil` of the commit before), cropped and placed alike: 810 rows of the frame, the middle 1280x720 of it, bars of the background colour left and right |
+| `scripts/bench/bench.sh --renderer vulkan --render-device /dev/dri/renderD128` with each reference clip | a few percent of a core, every frame shown ([`measurements.md`](measurements.md), "Frames in dmabufs") |
+
+Run 2026-11-20 on an Intel Core i7-13620H (Raptor Lake graphics, Mesa 26.3).
+
 ## Saved wallpapers
 
 Two outputs (`swaymsg create_output` adds `HEADLESS-2`), an image and a clip, and `XDG_STATE_HOME` from the setup. Look at each output's centre pixel with `grim -o NAME shot.png` and `magick shot.png -format '%[pixel:p{960,540}]' info:`, and at `$XDG_STATE_HOME/veil/state.json`.

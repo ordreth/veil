@@ -28,6 +28,7 @@ use wayland_client::{
 use super::answers::{Answers, Ticket};
 use super::binding::{OutputBinding, OutputKey};
 use super::control::{EngineEvent, SetRequests};
+use super::dmabuf::Dmabuf;
 use super::render::{Engine, RenderState, Switched};
 use super::retire::Retirements;
 use super::scale::ScaleInputs;
@@ -56,6 +57,8 @@ pub struct AppState {
     /// Makes the subsurfaces videos are shown in; `None` if the compositor
     /// has no `wl_subcompositor`.
     pub subcompositor: Option<SubcompositorState>,
+    /// The compositor's dmabuf support, for the frames of videos.
+    pub dmabuf: Dmabuf,
     pub conn: Connection,
     /// One per output the daemon draws on, with its wallpaper, and its surface
     /// while the output is there. A named output keeps its screen while it is
@@ -476,6 +479,7 @@ impl AppState {
         let (shm, qh, connection) = (&self.shm, &self.qh, &self.conn);
         let subcompositor = self.subcompositor.as_ref();
         let viewporter = self.scale_globals.viewporter();
+        let dmabuf = &self.dmabuf;
         let Screen {
             render, surface, ..
         } = self.screens.iter_mut().find(|screen| &screen.key == key)?;
@@ -493,6 +497,7 @@ impl AppState {
             surface: &wl_surface,
             subcompositor,
             viewporter,
+            dmabuf,
             qh,
             connection,
             buffer,

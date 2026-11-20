@@ -48,10 +48,13 @@ bench_require() {
 }
 
 # A headless sway with outputs of the given size side by side (one unless a
-# count is given; pixman rendering), in the runtime directory of
-# `bench_isolate`. Sets SWAYSOCK and WAYLAND_DISPLAY.
+# count is given), in the runtime directory of `bench_isolate`. It renders
+# with $bench_renderer (default pixman, on the CPU; gles2 renders on the GPU
+# and takes dmabufs), on the render node $bench_render_device if it is set
+# (wlroots picks one otherwise). Sets SWAYSOCK and WAYLAND_DISPLAY.
 bench_start_sway() {
     local size=$1 count=${2:-1} sock= display= i
+    local renderer=${bench_renderer:-pixman} device=${bench_render_device:-} rendering
     export XDG_RUNTIME_DIR=$work
     unset WAYLAND_DISPLAY WAYLAND_SOCKET SWAYSOCK HYPRLAND_INSTANCE_SIGNATURE DISPLAY
     echo 'xwayland disable' > "$work/sway.conf"
@@ -59,7 +62,8 @@ bench_start_sway() {
         printf 'output HEADLESS-%d resolution %s position %d 0\n' "$i" "$size" $(((i - 1) * ${size%x*})) \
             >> "$work/sway.conf"
     done
-    WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=$count WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
+    env WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS="$count" WLR_RENDERER="$renderer" WLR_LIBINPUT_NO_DEVICES=1 \
+        ${device:+WLR_RENDER_DRM_DEVICE="$device"} \
         LIBSEAT_BACKEND=noop sway -c "$work/sway.conf" > "$out/sway.log" 2>&1 &
     sway_pid=$!
     for _ in $(seq 100); do
@@ -70,10 +74,11 @@ bench_start_sway() {
     done
     [ -n "$sock" ] && [ -n "$display" ] || { echo "sway did not start; see $out/sway.log" >&2; exit 1; }
     export SWAYSOCK=$sock WAYLAND_DISPLAY=$display
+    rendering=$renderer${device:+ on $device}
     if [ "$count" -eq 1 ]; then
-        compositor="$(sway --version), headless, pixman, one output of $size"
+        compositor="$(sway --version), headless, $rendering, one output of $size"
     else
-        compositor="$(sway --version), headless, pixman, $count outputs of $size"
+        compositor="$(sway --version), headless, $rendering, $count outputs of $size"
     fi
 }
 

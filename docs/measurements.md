@@ -14,7 +14,7 @@ scripts/bench/bench.sh target/bench/clips/h264-1080p30.mp4  # 5 s warm-up, then 
 
 `bench.sh FILE` starts a headless sway of its own (pixman rendering, one output of 1920x1080; `--size` changes it), runs `veil daemon --input FILE` in it with directories of its own (your saved wallpapers and configuration file are not read or written), waits until the wallpaper is shown, waits `--warmup` seconds, and then samples the daemon once per `--interval` (1 s) for `--duration` (60 s). The results go to `target/bench/<date>-<file>/` (`--out` to choose): `samples.csv`, `report.txt` (also printed), and the logs of the daemon, of sway, and of the GStreamer elements the pipeline created. `scripts/bench/summary.sh samples.csv` prints the summary of a run again.
 
-Other options: `--mode` (veil's `--mode`), `--veil PATH` (another binary, for example `./result/bin/veil` of `nix build`, to compare builds), and `--outputs N` (N headless outputs side by side, each playing the file in a pipeline of its own; the frame counts are summed), and `--session`, which runs the daemon in the Wayland session the script is started from instead of a headless sway (stop your own veil daemon first: a second one refuses to start; `--output NAME` limits it to one monitor). Environment variables reach the daemon: `GST_PLUGIN_FEATURE_RANK=nvh264dec:0` takes a decoder out of the way, `MALLOC_ARENA_MAX=1` changes the allocator (`target/release/veil` has glibc's default unless it is set; the report names it).
+Other options: `--mode` (veil's `--mode`), `--renderer gles2` or `--renderer vulkan` (the headless sway renders on a GPU and takes dmabufs, instead of `pixman` on the CPU) with `--render-device /dev/dri/renderD128` (the render node of that GPU; wlroots picks one otherwise), `--veil PATH` (another binary, for example `./result/bin/veil` of `nix build`, to compare builds), and `--outputs N` (N headless outputs side by side, each playing the file in a pipeline of its own; the frame counts are summed), and `--session`, which runs the daemon in the Wayland session the script is started from instead of a headless sway (stop your own veil daemon first: a second one refuses to start; `--output NAME` limits it to one monitor). Environment variables reach the daemon: `GST_PLUGIN_FEATURE_RANK=nvh264dec:0` takes a decoder out of the way, `MALLOC_ARENA_MAX=1` changes the allocator (`target/release/veil` has glibc's default unless it is set; the report names it).
 
 ### The columns of `samples.csv`
 
@@ -244,9 +244,33 @@ What it says:
 - **Scaling on the CPU does not pay.** A first version converted a frame larger than its place at the size of the place (4K on this 1080p output: a quarter of the pixels). It cost more and showed 33 frames a second of 60: GStreamer's converter leaves its fast path when it scales. Measured with `gst-launch-1.0 ... nvh264dec ! videoconvertscale n-threads=2 ! ... ! fakesink sync=false`, 600 frames of `h264-2160p60.mp4`: 2.8 s decoding alone, 11.4 s with the conversion at 4K, 15.9 s to 1080p with `method=bilinear`, 14.4 s with `4-tap`, 19.2 s with `lanczos`, 9.1 s with `nearest-neighbour`.
 - **A first version that did not flush the connection after each frame showed 3 frames a second**: its requests waited in libwayland's buffer until the event loop woke for something else. `two_videos_play_side_by_side` (`tests/headless.rs`) now checks the frame rate.
 
+## Frames in dmabufs (2026-11-20, headless sway on the Intel GPU)
+
+The sink takes the frames of VA-API decoders in dmabufs and hands them to the compositor as they are (`known-issues.md`, entry 7). The same machine as "veil's own sink" above (Intel Core i7-13620H with Raptor Lake graphics, Mesa 26.3, and an RTX 4050). The headless sway renders on the Intel GPU (`bench.sh --renderer gles2 --render-device /dev/dri/renderD128`), so it takes dmabufs; NVIDIA's decoders were taken out (`GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvav1dec:0,nvvp9dec:0,nvvp8dec:0`), so every clip was decoded by a VA-API decoder. "Before" is commit `c5943ca`, which converts every frame on the CPU; "after" the first version of the change, which handed every video to the compositor. Alternating, `--duration 30`, `fill`, one 1920x1080 output, glibc's allocator.
+
+| Clip, decoder | CPU before / after | Frames per s before / after (dropped by the sink) | RSS before / after |
+|---|---|---|---|
+| `h264-1080p30.mp4`, `vah264dec` | 45.6 / 2.3 % | 30.0 (1) / 30.0 (0) | 144.6 / 121.4 MiB |
+| `h264-1080p60.mp4`, `vah264dec` | 71.4 / 6.1 % | 60.0 (1) / 59.9 (0) | 143.9 / 121.4 MiB |
+| `h264-2160p60.mp4`, `vah264dec` | 174.1 / 6.7 % | **39.5 (422)** / 60.0 (0) | 210.7 / 121.8 MiB |
+| `hevc-2160p60.mp4`, `vah265dec` | 175.3 / 8.6 % | **41.0 (410)** / 60.0 (0) | 210.9 / 122.2 MiB |
+| `vp9-1080p60.webm`, `vavp9dec` | 80.5 / 7.4 % | 59.5 (0) / 60.3 (0) | 140.2 / 120.0 MiB |
+| `av1-1080p60.mkv`, `vaav1dec` | 82.7 / 7.9 % | 60.0 (0) / 59.6 (0) | 142.2 / 122.0 MiB |
+
+In the CPU path (pixman, the default decoders: `nvh264dec` for H.264, `vavp9dec` for VP9) nothing changed: 44.6 / 43.6 % and 76.3 / 76.2 %, all frames shown. Threads went from 9 to 10 down to 8 to 9, descriptors up from 34 to 43 to 46 (the imported dmabufs). RSS rose by 0.1 to 0.4 MiB a minute in every run, before and after, which is the noise of a 30 s run.
+
+The final change also checks the colours (below), and `gles2` cannot be told them: with the final build, `h264-1080p30.mp4` (untagged, so taken for BT.709) is converted on the CPU there, as before. With `--renderer vulkan`, which can be told, the final build took **3.4 %** against 44.8 % before (29.8 frames a second, none dropped, against 26.5 with 104 dropped). The other clips with `vulkan` were not run: the run was stopped for lack of memory on the machine.
+
+What it says:
+
+- **The conversion was the whole cost.** Without it, a 1080p video costs 2 to 8 % of a core, about a tenth to a twentieth. What is left is decoding on the GPU, the event loop, and the sink's handling of every frame.
+- **4K at 60 fps plays in full.** Before, the CPU path lost a third of the frames at 175 % (its two converter threads were not enough); now 60 a second at 7 to 9 %.
+- **Less memory.** No `wl_shm` buffers: the frames stay in the decoder's dmabufs, about 20 MiB less at 1080p and 90 MiB less at 4K.
+- **The colours depend on the compositor knowing the coding.** With colour bars coded as BT.709 and as BT.601 (`manual-tests.md`, "Frames in dmabufs"), `vulkan` showed both as ffmpeg decodes them, within 3 of 255, once veil told it the coding. `gles2`, told nothing, showed BT.601 right and BT.709 wrong (red 231 instead of 251, cyan with 20 of red), which is why such a video is converted on the CPU there.
+
 ## Not measured yet
 
 - A real session (Hyprland with its dmabuf path): `--session`, by the maintainer. The conversion is known to happen there too on NVIDIA (above); what is left is the compositor's own share.
-- Intel and AMD GPUs, and VA-API: no such hardware here.
+- AMD GPUs. Intel's VA-API path is in "Frames in dmabufs" above, in a headless sway; not in a real session.
 - A paused video and a released one: the headless tests check them (CPU at most a quarter of playing, and at most 2 ticks in 2 s), but there is no bench run of them.
 - Hours and days: the 24-hour soak of the release checklist ([`roadmap.md`](roadmap.md)), on this machine, also with the software decoder (the slow start of the 1 s clip above).

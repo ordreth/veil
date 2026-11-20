@@ -8,6 +8,8 @@
 #
 # By default the daemon runs in a headless sway of its own (pixman rendering,
 # one output), which leaves the desktop alone and runs anywhere, also in CI.
+# With --renderer gles2 that sway renders on a GPU and takes dmabufs, so a
+# decoder's frames can go to it as they are (VA-API on Intel and AMD).
 # With --session it runs in the session this script is started from instead:
 # stop your own veil daemon first (a second one refuses to start), and expect
 # the wallpaper of that session to change while it runs.
@@ -29,6 +31,10 @@ usage: scripts/bench/bench.sh [options] FILE
   --outputs N          how many headless outputs, side by side; the file
                        plays on each of them (default 1)
   --mode MODE          veil's --mode (default fill)
+  --renderer NAME      how the headless sway renders: pixman (default, on
+                       the CPU, no dmabufs) or gles2 (on the GPU)
+  --render-device PATH the render node of the headless sway's GPU, as
+                       /dev/dri/renderD128 (default: wlroots picks one)
   --output NAME        with --session: draw on this output only
   --session            run in the current Wayland session, not a headless sway
   --veil PATH          the veil binary (default target/release/veil)
@@ -43,6 +49,8 @@ interval=1
 size=1920x1080
 outputs=1
 mode=fill
+bench_renderer=pixman
+bench_render_device=
 output=
 session=false
 here=$(cd "$(dirname "$0")" && pwd)
@@ -59,6 +67,8 @@ while [ $# -gt 0 ]; do
         --size) size=$2; shift 2 ;;
         --outputs) outputs=$2; shift 2 ;;
         --mode) mode=$2; shift 2 ;;
+        --renderer) bench_renderer=$2; shift 2 ;;
+        --render-device) bench_render_device=$2; shift 2 ;;
         --output) output=$2; shift 2 ;;
         --session) session=true; shift ;;
         --veil) veil=$2; shift 2 ;;

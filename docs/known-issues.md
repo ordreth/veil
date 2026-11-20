@@ -333,7 +333,7 @@ Not tried: committing at the video's frame rate instead of on every frame callba
 
 ## 7. A video costs CPU: its frames are converted to RGB on the CPU
 
-**Status:** open, accepted for 1.0 (2026-10-17). **Affects:** every video wallpaper whose decoder gives its frames in system memory, which on the reference machine (NVIDIA) is every decoder. The goal of "below 1 % CPU" for videos is not met; images are not affected (0 %).
+**Status:** open, accepted for 1.0 (2026-10-17); solved for VA-API decoders whose dmabufs the compositor takes (2026-11-20, below). **Affects:** every video wallpaper whose decoder gives its frames in system memory, which on the reference machine (NVIDIA) is every decoder. The goal of "below 1 % CPU" for videos is not met; images are not affected (0 %).
 
 ### Symptom
 
@@ -353,7 +353,7 @@ Decoding costs about 1 % of a core. The rest is `videoconvert` in veil's sink bi
 
 | Option | What it gives | Why it was not done (yet) |
 |---|---|---|
-| **A. VA-API decoders with DMABuf output** | Zero-copy: the decoder's frames go to the compositor as they are. | Needs an Intel or AMD VA-API driver. It is what GStreamer picks there, and nothing in veil's pipeline is in its way; not verified: there was no such hardware, and the compatibility table of `troubleshooting.md` asks testers with it to report the decoder and the CPU a video costs. On NVIDIA the VA driver gives no dmabufs to GStreamer. |
+| **A. VA-API decoders with DMABuf output** | Zero-copy: the decoder's frames go to the compositor as they are. | Done (2026-11-20, below). Needs an Intel or AMD VA-API driver; on NVIDIA the VA driver gives no dmabufs to GStreamer. |
 | **B. Convert on the GPU** (`cudaconvertscale`, `glcolorconvert`, Vulkan) | The CPU only copies the RGB frame. | `cudaconvertscale` is not in this build of `nvcodec`; the GL path did not negotiate here and would bring a GL context into the daemon, with an element chain that only fits NVIDIA. Not pursued. |
 | **C. DRM dumb buffers** (`waylandsink drm-device=...`) | NV12 copied into a dmabuf, no conversion. | sway takes NV12 dmabufs only with NVIDIA's tiled modifiers, not as linear dumb buffers: it still converted (21.5 %). |
 | **D. Replace `waylandsink`** (entry 1, option E) | A sink of veil's own could take CUDA or GL frames, export them as dmabufs, and would also remove entries 1, 2 and the wake-ups of entry 6. | Large, and after 1.0. |
@@ -362,13 +362,24 @@ Decoding costs about 1 % of a core. The rest is `videoconvert` in veil's sink bi
 
 veil's own sink replaced `waylandsink` (entry 1). The conversion is the same code (`GstVideoConverter`, two threads), now inside the sink, straight into the `wl_shm` buffer, and it skips what `fill` and `center` crop away. The cost of a video is the same within the noise (`measurements.md`, "veil's own sink"). The way to a cheaper video is unchanged: dmabufs (VA-API on Intel and AMD, which the sink does not take yet) or a conversion on the GPU.
 
+### Since 2026-11-20: frames in dmabufs
+
+The sink takes a decoder's frames in dmabufs (`video/x-raw(memory:DMABuf)`, `DMA_DRM`) when the compositor takes their format and modifier (`zwp_linux_dmabuf_v1`), and shows them as they are: no conversion, no copy, the crop is the viewport's. On an Intel GPU (Raptor Lake, `vah264dec`) in a headless sway rendering on that GPU, H.264 at 1080p30 costs about 2 % of a core instead of 45 %, and 4K at 60 fps plays in full for about 7 % instead of losing a third of its frames at 175 % (`measurements.md`, "Frames in dmabufs").
+
+What is left:
+
+- **NVIDIA:** unchanged. Its decoders give no dmabufs (option B or D would be needed).
+- **The colours need the compositor to know how they are coded.** The compositor turns the NV12 frame into RGB itself, and is told the coding (BT.709, BT.601, BT.2020, the range) through `wp_color_representation_v1`. One that cannot be told uses BT.601 with the limited range, the default of EGL's dmabuf import, and would show a BT.709 video with wrong colours (measured: red 231 instead of 251, cyan with red in it). veil hands it only videos coded as BT.601 then, and converts the others on the CPU, as before. sway 1.12 rendering with `gles2` advertises the protocol with no coding at all; with `vulkan` it advertises BT.601, BT.709 and BT.2020 in both ranges. Most HD video is BT.709 (and GStreamer takes an untagged HD video for BT.709), so on a compositor that cannot be told, most videos are still converted. Hyprland: not checked.
+- **A decoder does not negotiate again while it plays.** When the compositor refuses a dmabuf, or cannot be told a video's coding, the sink offers system memory only and the pipeline is started once more (VA-API decoders ignore a request to negotiate again); the previous wallpaper stays on screen meanwhile.
+- **Laptops with two GPUs:** GStreamer ranks NVIDIA's decoders above the VA-API ones, so a laptop with both decodes H.264, HEVC and AV1 on the NVIDIA card, in system memory, even when the compositor runs on the Intel GPU and would take its dmabufs (VP9 went to `vavp9dec` on the machine measured). `GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvav1dec:0` makes GStreamer pick the VA-API decoders (`troubleshooting.md`). veil does not choose the decoder by itself.
+
 ### Decision (2026-10-17)
 
 Keep `waylandsink` for 1.0, with the cheapest correct pipeline (`native-video`, two conversion threads), and record the cost as it was measured. The conversion is not `waylandsink`'s doing: any sink that shows NVIDIA's frames through shared memory needs it.
 
 ### When to revisit
 
-When replacing `waylandsink` is taken up after 1.0 (option D), when `nvcodec` or the NVIDIA VA driver can hand out dmabufs, and when a tester reports a video on Intel or AMD hardware (option A; none was available on 2026-10-19, and a row was left for it in the compatibility table of `troubleshooting.md`).
+When `nvcodec` or the NVIDIA VA driver can hand out dmabufs, when a conversion on the GPU is taken up (option B), when Hyprland's support of `wp_color_representation_v1` is known (it decides whether BT.709 video takes the dmabuf path there), and when a tester reports a video on AMD hardware.
 
 ## 8. Older GStreamer versions: animated GIFs, and frames dropped on Ubuntu 24.04
 
@@ -405,3 +416,23 @@ C. The README lists the distributions the tarball was run on and points here; `t
 ### When to revisit
 
 When a tester reports the tarball on one of these distributions with a compositor on real hardware (especially Ubuntu 24.04 and its frame drops), or when the oldest distributions the tarball is for change.
+
+---
+
+## 9. Washed-out colours from VA-API decoders in system memory
+
+**Status:** open, found 2026-11-20, not fixed. **Affects:** videos decoded by a VA-API decoder (Intel, AMD) whose frames veil converts on the CPU: every such video before 2026-11-20, and now the ones that cannot go to the compositor in dmabufs (entry 7).
+**Last checked:** 2026-11-20, `vah264dec` (GStreamer 1.28.8) on an Intel GPU, a headless sway.
+
+### Symptom
+
+The colours are paler and darker than they are: on clips of colour bars coded as BT.709 and as BT.601, both limited range, pure red is shown as about (237, 13, 15) instead of (251, 0, 0) (ffmpeg's decode), white is grey. The same clips in dmabufs, converted by the compositor, are right.
+
+### Cause
+
+The decoder's caps in system memory say `colorimetry=0:3:0:0`: the matrix (BT.709), but an unknown range. GStreamer's converter takes an unknown range for the full one and does not stretch the 16 to 235 of a video to 0 to 255. veil's dmabuf path takes an unknown range for the limited one, as GStreamer itself does when it fills in a colorimetry.
+
+### What would fix it
+
+Taking an unknown range of a YCbCr stream for the limited one before the converter is made (`sink.rs`, `new_converter`). Left for its own change: it changes the colours of every video that comes this way, which is to be checked on its own. Whether NVIDIA's decoders say the range was not checked.
+

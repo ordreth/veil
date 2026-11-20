@@ -12,7 +12,7 @@ dynamically from the system (or from the Nix store), under their own licenses
 
 ================================================================================
 Overview of licenses:
-  * MIT License (221)
+  * MIT License (223)
   * BSD 3-Clause "New" or "Revised" License (4)
   * Apache License 2.0 (3)
   * BSD 2-Clause "Simplified" License (3)
@@ -3047,6 +3047,8 @@ Used by:
   * event-listener 5.4.2 (https://github.com/smol-rs/event-listener)
   * fastrand 2.5.0 (https://github.com/smol-rs/fastrand)
   * futures-lite 2.6.1 (https://github.com/smol-rs/futures-lite)
+  * gstreamer-allocators-sys 0.22.6 (https://gitlab.freedesktop.org/gstreamer/gstreamer-rs)
+  * gstreamer-allocators 0.22.6 (https://gitlab.freedesktop.org/gstreamer/gstreamer-rs)
   * gstreamer-base-sys 0.22.6 (https://gitlab.freedesktop.org/gstreamer/gstreamer-rs)
   * gstreamer-base 0.22.6 (https://gitlab.freedesktop.org/gstreamer/gstreamer-rs)
   * gstreamer-sys 0.22.6 (https://gitlab.freedesktop.org/gstreamer/gstreamer-rs)

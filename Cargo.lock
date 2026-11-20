@@ -992,6 +992,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "gstreamer-allocators"
+version = "0.22.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a53239735ec0376659ec082343225cd0e1a53f7f2ee318aec32adc696e31fe6"
+dependencies = [
+ "glib",
+ "gstreamer",
+ "gstreamer-allocators-sys",
+ "libc",
+ "once_cell",
+]
+
+[[package]]
+name = "gstreamer-allocators-sys"
+version = "0.22.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b651aa05affa0c57dbb5c85b8a0729a10c2aa412bd9ef14d782a39934835e5c"
+dependencies = [
+ "glib-sys",
+ "gobject-sys",
+ "gstreamer-sys",
+ "libc",
+ "system-deps",
+]
+
+[[package]]
 name = "gstreamer-base"
 version = "0.22.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2493,6 +2519,7 @@ dependencies = [
  "clap_mangen",
  "fast_image_resize",
  "gstreamer",
+ "gstreamer-allocators",
  "gstreamer-video",
  "image",
  "notify-rust",

@@ -55,17 +55,20 @@ pub struct FrameSize {
 }
 
 impl FrameSize {
-    /// Reads the frame size from negotiated raw video caps.
+    /// Reads the frame size from negotiated raw video caps, in system memory
+    /// or in dmabufs.
     pub fn from_caps(caps: &gst::CapsRef) -> Option<Self> {
-        let info = gst_video::VideoInfo::from_caps(caps).ok()?;
-        let par = info.par();
-        let par = match (u32::try_from(par.numer()), u32::try_from(par.denom())) {
+        let fields = VideoFields::of(caps)?;
+        let par = match (
+            u32::try_from(fields.par.numer()),
+            u32::try_from(fields.par.denom()),
+        ) {
             (Ok(n), Ok(d)) if n > 0 && d > 0 => (n, d),
             _ => (1, 1),
         };
-        (info.width() > 0 && info.height() > 0).then_some(Self {
-            width: info.width(),
-            height: info.height(),
+        (fields.width > 0 && fields.height > 0).then_some(Self {
+            width: fields.width,
+            height: fields.height,
             par,
         })
     }
@@ -73,7 +76,7 @@ impl FrameSize {
     /// Frames per second of negotiated raw video caps, as a fraction, if the
     /// stream has a fixed rate (`0/1` in the caps means a variable one).
     pub fn frame_rate(caps: &gst::CapsRef) -> Option<(u32, u32)> {
-        let fps = gst_video::VideoInfo::from_caps(caps).ok()?.fps();
+        let fps = VideoFields::of(caps)?.fps;
         match (u32::try_from(fps.numer()), u32::try_from(fps.denom())) {
             (Ok(n), Ok(d)) if n > 0 && d > 0 => Some((n, d)),
             _ => None,
@@ -92,6 +95,44 @@ impl FrameSize {
         let (n, d) = self.par;
         let width = (u64::from(self.width) * u64::from(n) + u64::from(d) / 2) / u64::from(d);
         width.clamp(1, u64::from(u32::MAX)) as u32
+    }
+}
+
+/// What the layout needs of negotiated raw video caps.
+struct VideoFields {
+    width: u32,
+    height: u32,
+    par: gst::Fraction,
+    fps: gst::Fraction,
+}
+
+impl VideoFields {
+    /// `GstVideoInfo` reads caps of frames in system memory. It refuses those
+    /// of frames in dmabufs (`DMA_DRM`, whose layout only the `drm-format`
+    /// says), whose fields are read here as they are.
+    fn of(caps: &gst::CapsRef) -> Option<Self> {
+        if let Ok(info) = gst_video::VideoInfo::from_caps(caps) {
+            return Some(Self {
+                width: info.width(),
+                height: info.height(),
+                par: info.par(),
+                fps: info.fps(),
+            });
+        }
+        let structure = caps.structure(0)?;
+        if structure.name() != "video/x-raw" || structure.get::<&str>("format").ok()? != "DMA_DRM" {
+            return None;
+        }
+        Some(Self {
+            width: u32::try_from(structure.get::<i32>("width").ok()?).ok()?,
+            height: u32::try_from(structure.get::<i32>("height").ok()?).ok()?,
+            par: structure
+                .get::<gst::Fraction>("pixel-aspect-ratio")
+                .unwrap_or(gst::Fraction::new(1, 1)),
+            fps: structure
+                .get::<gst::Fraction>("framerate")
+                .unwrap_or(gst::Fraction::new(0, 1)),
+        })
     }
 }
 
@@ -449,6 +490,12 @@ const STOP_MESSAGE: &str = "veil-bus-stop";
 
 /// The message that tells the bus thread that `Wanted::paused` changed.
 const WANTED_MESSAGE: &str = "veil-bus-wanted";
+
+/// The message of the sink that asks for the pipeline to be started again,
+/// so that the decoder negotiates other caps: the frames it gives cannot be
+/// shown (`sink`, frames in dmabufs). VA-API decoders do not negotiate again
+/// while they play, whatever the sink asks for.
+const RENEGOTIATE_MESSAGE: &str = "veil-renegotiate";
 
 /// The thread that reads the bus of a playing pipeline: it starts the video
 /// again when it has ended, and reports playback errors.
@@ -877,6 +924,39 @@ fn watch_bus(
                         | Phase::Waiting { .. }
                         | Phase::Restarting { .. }
                         | Phase::Over => None,
+                    }
+                }
+                // The sink cannot show the frames the decoder negotiated, and
+                // offers other caps now: the pipeline starts again, which is
+                // not a failure. A start stays a start (its first frame
+                // reports it), and `Null` empties the bus of what the first
+                // try left there.
+                MessageView::Application(app)
+                    if app
+                        .structure()
+                        .is_some_and(|s| s.name() == RENEGOTIATE_MESSAGE) =>
+                {
+                    match phase {
+                        Phase::Starting { .. } | Phase::Playing | Phase::Restarting { .. } => {
+                            tracing::debug!(
+                                "starting the video pipeline again, to negotiate its frames"
+                            );
+                            if let Err(e) = pipeline.set_state(gst::State::Null) {
+                                tracing::debug!("stopping the video pipeline: {e}");
+                            }
+                            match pipeline.set_state(gst::State::Paused) {
+                                Ok(_) => {
+                                    let deadline = now + policy.start_timeout;
+                                    phase = match phase {
+                                        Phase::Starting { .. } => Phase::Starting { deadline },
+                                        _ => Phase::Restarting { deadline },
+                                    };
+                                    None
+                                }
+                                Err(e) => Some(e.to_string()),
+                            }
+                        }
+                        Phase::Waiting { .. } | Phase::Over => None,
                     }
                 }
                 MessageView::Buffering(buffering) => {
@@ -1537,6 +1617,22 @@ mod tests {
 
         let audio = gst::Caps::builder("audio/x-raw").build();
         assert_eq!(FrameSize::from_caps(&audio), None);
+    }
+
+    #[test]
+    fn frame_size_and_rate_are_read_from_dmabuf_caps() {
+        gst::init().expect("gstreamer init");
+        let caps = gst::Caps::builder("video/x-raw")
+            .features(["memory:DMABuf"])
+            .field("format", "DMA_DRM")
+            .field("drm-format", "NV12:0x0100000000000002")
+            .field("width", 1920)
+            .field("height", 1080)
+            .field("pixel-aspect-ratio", gst::Fraction::new(4, 3))
+            .field("framerate", gst::Fraction::new(30000, 1001))
+            .build();
+        assert_eq!(FrameSize::from_caps(&caps), frame(1920, 1080, (4, 3)));
+        assert_eq!(FrameSize::frame_rate(&caps), Some((30000, 1001)));
     }
 
     #[test]

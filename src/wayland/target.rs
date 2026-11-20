@@ -14,6 +14,7 @@ use wayland_client::{
     Connection, QueueHandle,
 };
 
+use super::dmabuf::Dmabuf;
 use super::plane::Plane;
 use super::state::AppState;
 use crate::engine::{Compose, RenderTarget, VideoPlane};
@@ -36,6 +37,8 @@ pub(super) struct SurfaceTarget<'a> {
     /// `wl_subcompositor`.
     pub subcompositor: Option<&'a SubcompositorState>,
     pub viewporter: Option<&'a WpViewporter>,
+    /// What a video plane shows dmabuf frames with.
+    pub dmabuf: &'a Dmabuf,
     pub qh: &'a QueueHandle<AppState>,
     pub connection: &'a Connection,
     /// Buffer size in physical pixels: the surface's logical size times its scale.
@@ -123,6 +126,7 @@ impl RenderTarget for SurfaceTarget<'_> {
             subcompositor,
             self.viewporter,
             self.shm.wl_shm(),
+            self.dmabuf.for_plane(),
             self.qh,
             self.connection,
         )))

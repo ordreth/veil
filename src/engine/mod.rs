@@ -8,7 +8,8 @@ pub mod loader;
 pub mod media;
 // The only module that may contain `unsafe` (see `[lints]` in `Cargo.toml`):
 // it subclasses a GStreamer element, and the `glib` macros that do that expand
-// to `unsafe` code. It writes none of its own.
+// to `unsafe` code. Its own is one block in `video::sink`, which borrows the
+// file descriptor of a frame's dmabuf from GStreamer.
 #[allow(unsafe_code)]
 pub mod video;
 
@@ -178,6 +179,147 @@ pub trait VideoPlane: Send + Sync {
     /// Takes the plane off the surface. Nothing it does after that reaches the
     /// compositor. It must be called before the surface goes away (`detach`).
     fn close(&self);
+
+    /// The dmabufs the plane can show as they are, with a crop and at any
+    /// size: the format and modifier pairs the compositor takes. Empty if it
+    /// takes none, or cannot crop and scale them (no `wp_viewporter`); then
+    /// frames go through `allocate`.
+    fn dmabuf_formats(&self) -> Arc<[DrmFormat]> {
+        Arc::from([])
+    }
+
+    /// Makes a dmabuf frame known to the compositor, the first time it comes,
+    /// and returns what `show_dmabuf` shows it by. A decoder hands out the
+    /// same few dmabufs over and over, and the compositor imports each once.
+    /// Waits for the compositor's answer: [`Imported::Refused`] means it
+    /// cannot use the frame (nor, most likely, any other of the stream), and
+    /// [`Imported::NotYet`] that it did not answer in time.
+    fn import(&self, _frame: &DmabufFrame<'_>) -> Imported {
+        Imported::Refused
+    }
+
+    /// Whether the compositor turns YCbCr dmabufs coded as `coding` into the
+    /// right colours: it can be told the coding, or (when it cannot be told
+    /// anything) it is the one compositors assume.
+    fn shows_coding(&self, _coding: ColorCoding) -> bool {
+        false
+    }
+
+    /// Shows imported frame `id` at `place` (logical pixels of the surface),
+    /// cropped to `source` (pixels of the frame). `coding` is how its colours
+    /// are coded, if it is a YCbCr frame (one `shows_coding` accepts). `keep`
+    /// holds the frame's memory: the plane drops it once the compositor no
+    /// longer reads it, and the decoder can write the next frame into it.
+    /// Returns whether the plane moved, as `show` does.
+    fn show_dmabuf(
+        &self,
+        _id: DmabufId,
+        _keep: Box<dyn Send>,
+        _coding: Option<ColorCoding>,
+        _source: Rect,
+        _place: Rect,
+    ) -> bool {
+        false
+    }
+
+    /// Forgets the imported frames the compositor does not hold: the stream
+    /// changed, and they will not come again.
+    fn forget_imports(&self) {}
+}
+
+/// A dmabuf format the compositor takes: a DRM fourcc (`drm_fourcc.h`) and a
+/// format modifier (the memory layout: linear, or a tiling of one GPU).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DrmFormat {
+    pub fourcc: u32,
+    pub modifier: u64,
+}
+
+impl DrmFormat {
+    /// Whether frames of this fourcc are YCbCr (`Some(true)`) or RGB
+    /// (`Some(false)`); `None` for one veil does not know. The colours of a
+    /// YCbCr frame depend on how they are coded ([`ColorCoding`]).
+    pub fn is_ycbcr(&self) -> Option<bool> {
+        const YCBCR: [&[u8; 4]; 22] = [
+            b"NV12", b"NV21", b"NV16", b"NV61", b"NV24", b"NV42", b"P010", b"P012", b"P016",
+            b"P210", b"YUYV", b"YVYU", b"UYVY", b"VYUY", b"AYUV", b"XYUV", b"Y210", b"Y212",
+            b"Y216", b"Y410", b"Y412", b"YU12",
+        ];
+        const RGB: [&[u8; 4]; 12] = [
+            b"AR24", b"XR24", b"AB24", b"XB24", b"RA24", b"RX24", b"BA24", b"BX24", b"AR30",
+            b"XR30", b"AB30", b"XB30",
+        ];
+        let fourcc = self.fourcc.to_le_bytes();
+        if YCBCR.iter().any(|f| **f == fourcc) {
+            Some(true)
+        } else if RGB.iter().any(|f| **f == fourcc) {
+            Some(false)
+        } else {
+            None
+        }
+    }
+}
+
+/// How the colours of a YCbCr frame are coded (H.273): which matrix turns
+/// them into RGB, and whether they use the full range of values or the
+/// limited one of video (16 to 235).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ColorCoding {
+    pub matrix: ColorMatrix,
+    pub full_range: bool,
+}
+
+impl ColorCoding {
+    /// What a compositor assumes when it is not told: the default of
+    /// `EGL_EXT_image_dma_buf_import`, with which compositors import dmabufs.
+    pub const ASSUMED: Self = Self {
+        matrix: ColorMatrix::Bt601,
+        full_range: false,
+    };
+}
+
+/// The matrix coefficients of a [`ColorCoding`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorMatrix {
+    Bt601,
+    Bt709,
+    Bt2020,
+    Smpte240m,
+    Fcc,
+}
+
+/// One plane of a [`DmabufFrame`]: where it is in which dmabuf.
+#[derive(Debug)]
+pub struct DmabufPlane<'a> {
+    pub fd: std::os::fd::BorrowedFd<'a>,
+    /// Bytes from the start of the dmabuf.
+    pub offset: u32,
+    /// Bytes from one row to the next.
+    pub stride: u32,
+}
+
+/// A decoded video frame in GPU memory, as a decoder hands it out.
+#[derive(Debug)]
+pub struct DmabufFrame<'a> {
+    pub format: DrmFormat,
+    /// Pixels.
+    pub size: (u32, u32),
+    pub planes: Vec<DmabufPlane<'a>>,
+}
+
+/// A frame a [`VideoPlane`] has imported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DmabufId(pub u64);
+
+/// The answer of [`VideoPlane::import`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Imported {
+    /// The compositor has the frame.
+    Ready(DmabufId),
+    /// The compositor did not answer in time; the frame cannot be shown now.
+    NotYet,
+    /// The compositor cannot use the frame.
+    Refused,
 }
 
 /// The pixels of one buffer of a [`VideoPlane`]. It is `'static`, so a

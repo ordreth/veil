@@ -1,6 +1,7 @@
 pub mod answers;
 pub mod binding;
 mod control;
+mod dmabuf;
 mod plane;
 pub mod queue;
 pub mod render;
@@ -38,6 +39,7 @@ use crate::service::{self, NotifyState, Readiness};
 use answers::Answers;
 use binding::OutputBinding;
 use control::SetRequests;
+use dmabuf::Dmabuf;
 use retire::Retirements;
 use state::{AppState, Startup};
 use surface::ScaleGlobals;
@@ -132,6 +134,7 @@ pub fn run(settings: Settings) -> Result<(), VeilError> {
                 tracing::warn!("compositor has no wl_subcompositor ({e}); videos cannot be shown")
             })
             .ok();
+    let dmabuf = Dmabuf::bind(&globals, &qh);
 
     // Loader threads deliver the wallpapers they have loaded through this
     // channel; the loop switches to them in `load_finished`.
@@ -149,6 +152,7 @@ pub fn run(settings: Settings) -> Result<(), VeilError> {
         layer_shell,
         scale_globals,
         subcompositor,
+        dmabuf,
         conn: conn.clone(),
         screens: Vec::new(),
         binding: OutputBinding::new(outputs.clone()),
