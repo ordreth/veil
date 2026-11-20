@@ -77,6 +77,10 @@ pub(super) struct Held(Arc<AtomicBool>);
 /// User data of a frame callback: set when the compositor has drawn the frame.
 pub(super) struct Taken(Arc<AtomicBool>);
 
+/// User data of the frame callback of a parked plane: the surface it is a
+/// subsurface of, which the compositor draws again.
+pub(super) struct Drawn(WlSurface);
+
 struct PlaneBuffer {
     buffer: WlBuffer,
     held: Arc<AtomicBool>,
@@ -91,6 +95,7 @@ struct Shown {
 }
 
 struct Objects {
+    parent: WlSurface,
     surface: WlSurface,
     subsurface: WlSubsurface,
     viewport: Option<WpViewport>,
@@ -130,6 +135,7 @@ impl Plane {
         let viewport = viewporter.map(|viewporter| viewporter.get_viewport(&surface, qh, ()));
         Self {
             objects: Mutex::new(Some(Objects {
+                parent: parent.clone(),
                 surface,
                 subsurface,
                 viewport,
@@ -292,6 +298,25 @@ impl VideoPlane for Plane {
         moved
     }
 
+    fn park(&self) {
+        let mut guard = self.objects();
+        let Some(objects) = guard.as_mut() else {
+            return;
+        };
+        // The compositor keeps the frame on screen without them: their
+        // memory is not written again.
+        for buffer in objects.buffers.drain(..) {
+            buffer.buffer.destroy();
+        }
+        objects.buffer_size = (0, 0);
+        objects
+            .surface
+            .frame(&self.qh, Drawn(objects.parent.clone()));
+        objects.surface.commit();
+        drop(guard);
+        self.flush();
+    }
+
     fn close(&self) {
         let Some(objects) = self.objects().take() else {
             return;
@@ -327,6 +352,21 @@ impl Dispatch<WlBuffer, Held> for AppState {
     ) {
         if let wl_buffer::Event::Release = event {
             held.0.store(false, Ordering::Release);
+        }
+    }
+}
+
+impl Dispatch<WlCallback, Drawn> for AppState {
+    fn event(
+        state: &mut Self,
+        _: &WlCallback,
+        event: wl_callback::Event,
+        drawn: &Drawn,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            state.drawn_again(&drawn.0);
         }
     }
 }

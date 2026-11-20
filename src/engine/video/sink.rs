@@ -82,6 +82,14 @@ impl PlaneSink {
         }
     }
 
+    /// Takes the plane away from the sink, open, with its frame on screen.
+    /// The sink shows nothing after this and frees its buffers.
+    pub(super) fn take_plane(&self) -> Option<Arc<dyn VideoPlane>> {
+        let mut state = self.imp().state();
+        state.forget_buffers();
+        state.plane.take()
+    }
+
     /// Shows the frame on screen again, laid out anew. For a layout that
     /// changed (the surface was resized) while no new frame comes: a paused
     /// video. Nothing happens while the compositor has not taken the frame

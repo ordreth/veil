@@ -9,6 +9,7 @@ veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The l
 ### Fixed
 
 - A monitor that is changed (scale, mode, position), plugged in, unplugged, powered on or woken from DPMS while a video plays no longer crashes the daemon (known issue 1). The crash was in GStreamer's `waylandsink`, which veil no longer uses.
+- A video that was stopped because nobody saw it (a locked session, a monitor that is off) no longer shows the bare background colour when it is seen again: its last frame stays on screen until the video, started again, has its first frame.
 
 ### Changed
 

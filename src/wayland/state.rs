@@ -635,6 +635,26 @@ fn sync_buffer_mapping(
     }
 }
 
+impl AppState {
+    /// The compositor has drawn the parked video plane of `surface`
+    /// (`Plane::park`): the surface is seen again, as when it answers a frame
+    /// callback of its own.
+    pub(super) fn drawn_again(&mut self, surface: &wl_surface::WlSurface) {
+        if let Some(screen) = self.screens.iter_mut().find(|s| s.shows_on(surface)) {
+            seen(&mut screen.render, &screen.key);
+        }
+    }
+}
+
+/// The compositor draws the surface of `key` again: a video released because
+/// nobody saw it is attached again.
+fn seen(render: &mut RenderState, key: &OutputKey) {
+    if render.seen() {
+        // `redraw_if_needed` attaches it, after this batch of events.
+        tracing::info!("the wallpaper of {key} is drawn again; starting its video");
+    }
+}
+
 /// Keeps the frame-callback loop of a video going on one surface: requests a
 /// callback and commits, so the compositor presents the video subsurface. At
 /// most one callback is outstanding per surface, so switching between videos
@@ -699,13 +719,7 @@ impl CompositorHandler for AppState {
         };
         own.frame_callback_pending = false;
         self.frames_handled += 1;
-        if screen.render.seen() {
-            // `redraw_if_needed` attaches it, after this batch of events.
-            tracing::info!(
-                "the wallpaper of {} is drawn again; starting its video",
-                screen.key
-            );
-        }
+        seen(&mut screen.render, &screen.key);
         if screen.render.plays_video() {
             // Commit the parent surface so the compositor presents the video
             // subsurface. Hyprland needs it: without it the video lagged and

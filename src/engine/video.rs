@@ -23,7 +23,9 @@
 //! `waylandsink`, in one pass straight into the compositor's memory, and
 //! converts no pixel that is cropped away (`sink` module docs).
 
-use super::{Attached, EngineSignal, FrameCounts, RenderContext, StreamInfo, WallpaperEngine};
+use super::{
+    Attached, EngineSignal, FrameCounts, RenderContext, StreamInfo, VideoPlane, WallpaperEngine,
+};
 use crate::error::VeilError;
 use crate::notify::{self, Throttle, Verdict};
 use crate::scaling::{self, Rect, ScaleMode, ScaleOptions, SurfaceScale};
@@ -944,6 +946,11 @@ pub struct VideoEngine {
     /// Whether the wallpaper is paused (`pause`/`resume`). Every pipeline of
     /// this engine is told, also one that is built later.
     paused: bool,
+    /// The plane of a pipeline that was released while nobody saw it
+    /// (`release_unseen`), with its last frame. It stays until the next
+    /// pipeline has a frame on screen (`take_over`), so the compositor does not
+    /// show the bare background colour when it draws the surface again.
+    parked: Option<Arc<dyn VideoPlane>>,
 }
 
 impl VideoEngine {
@@ -969,6 +976,7 @@ impl VideoEngine {
             options,
             player: Some(player),
             paused: false,
+            parked: None,
         })
     }
 
@@ -997,6 +1005,13 @@ impl VideoEngine {
 }
 
 impl VideoEngine {
+    /// Takes the plane of a released pipeline off the surface, if there is one.
+    fn close_parked(&mut self) {
+        if let Some(plane) = self.parked.take() {
+            plane.close();
+        }
+    }
+
     /// Puts the video's plane on the context's surface and lets the pipeline
     /// produce its first frame there. The video does not play yet, and the
     /// surface keeps the wallpaper it shows: the pipeline's bus thread reports
@@ -1086,6 +1101,8 @@ impl WallpaperEngine for VideoEngine {
             ctx.target.fill(self.options.bg_color)?;
             player.background_drawn = true;
         }
+        // The new plane shows its first frame, above the parked one.
+        self.close_parked();
         Ok(())
     }
 
@@ -1115,6 +1132,27 @@ impl WallpaperEngine for VideoEngine {
     /// surface. This must happen before the surface is destroyed.
     fn detach(&mut self) {
         self.player = None;
+        self.close_parked();
+    }
+
+    /// Drops the pipeline, but keeps its plane with the last frame on the
+    /// surface (`parked`): when the compositor draws the surface again (an
+    /// unlocked session, a monitor that is on again), it shows that frame
+    /// instead of the background colour, until the next pipeline has a frame
+    /// of its own.
+    fn release_unseen(&mut self) {
+        let plane = self
+            .player
+            .as_ref()
+            .and_then(|player| player.sink.downcast_ref::<PlaneSink>())
+            .and_then(PlaneSink::take_plane);
+        // Stops the pipeline; the sink no longer has a plane to close.
+        self.player = None;
+        self.close_parked();
+        if let Some(plane) = &plane {
+            plane.park();
+        }
+        self.parked = plane;
     }
 
     /// The pipeline stops in `Paused`, with its frame on screen, as soon as it
@@ -1167,7 +1205,7 @@ impl WallpaperEngine for VideoEngine {
 mod tests {
     use super::*;
     use crate::engine::testing::FakeTarget;
-    use crate::engine::{EngineReport, PlaneCanvas, VideoPlane};
+    use crate::engine::{Compose, EngineReport, PlaneCanvas, RenderTarget};
     use crate::scaling::Color;
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
@@ -1544,6 +1582,7 @@ mod tests {
         fixed_scale: bool,
         allocated: Mutex<Vec<(u32, u32)>>,
         shown: Mutex<Vec<Rect>>,
+        parked: AtomicBool,
         closed: AtomicBool,
     }
 
@@ -1575,8 +1614,43 @@ mod tests {
             moved
         }
 
+        fn park(&self) {
+            self.parked.store(true, Ordering::Release);
+        }
+
         fn close(&self) {
             self.closed.store(true, Ordering::Release);
+        }
+    }
+
+    /// A target that hands out a new `FakePlane` for every video plane.
+    struct PlaneTarget {
+        surface: FakeTarget,
+        planes: Vec<Arc<FakePlane>>,
+    }
+
+    impl PlaneTarget {
+        fn new() -> Self {
+            Self {
+                surface: FakeTarget::new((64, 64)),
+                planes: Vec::new(),
+            }
+        }
+    }
+
+    impl RenderTarget for PlaneTarget {
+        fn fill(&mut self, color: Color) -> Result<(), VeilError> {
+            self.surface.fill(color)
+        }
+
+        fn draw(&mut self, compose: &mut Compose<'_>) -> Result<(), VeilError> {
+            self.surface.draw(compose)
+        }
+
+        fn video_plane(&mut self) -> Result<Arc<dyn VideoPlane>, VeilError> {
+            let plane = Arc::new(FakePlane::default());
+            self.planes.push(Arc::clone(&plane));
+            Ok(plane)
         }
     }
 
@@ -2865,6 +2939,63 @@ mod tests {
         let player = engine.fresh_player((1920, 1080), scale).expect("rebuild");
         assert_ne!(player.pipeline, used);
         assert!(!player.attached);
+    }
+
+    /// Attaches `engine` to `target` and lets it take over once it has its
+    /// first frame, as the event loop does.
+    fn show_on(engine: &mut VideoEngine, target: &mut PlaneTarget) {
+        let (signal, reports) = signal();
+        let attached = engine
+            .attach(&mut RenderContext {
+                signal,
+                ..RenderContext::new((64, 64), SurfaceScale::ONE, target)
+            })
+            .expect("attach");
+        assert_eq!(attached, Attached::Starting);
+        // The sink places its plane (`Moved`) before the start is reported.
+        loop {
+            match next_report(&reports) {
+                EngineReport::Moved => continue,
+                EngineReport::Started(started) => break started.expect("the clip starts"),
+                other => panic!("expected a start report, got {other:?}"),
+            }
+        }
+        engine
+            .take_over(&mut RenderContext::new((64, 64), SurfaceScale::ONE, target))
+            .expect("take over");
+    }
+
+    #[test]
+    fn a_video_released_while_unseen_keeps_its_frame_until_the_next_one_is_there() {
+        let Some(clip) = temp_clip("parked") else {
+            return;
+        };
+        let engine = VideoEngine::new(clip.to_str().expect("UTF-8 path"), ScaleOptions::default());
+        let mut engine = engine.expect("build the pipeline");
+        let mut target = PlaneTarget::new();
+        show_on(&mut engine, &mut target);
+        let first = Arc::clone(&target.planes[0]);
+        assert!(!first.shown.lock().expect("shown").is_empty());
+
+        // Nobody sees it: the pipeline goes, its frame stays.
+        engine.release_unseen();
+        assert!(engine.player.is_none());
+        assert!(first.parked.load(Ordering::Acquire));
+        assert!(!first.closed.load(Ordering::Acquire), "the frame is gone");
+
+        // Seen again: the next pipeline's plane replaces it once it has a frame.
+        show_on(&mut engine, &mut target);
+        assert!(first.closed.load(Ordering::Acquire), "the old frame stays");
+        let second = Arc::clone(&target.planes[1]);
+        assert!(!second.shown.lock().expect("shown").is_empty());
+        assert!(!second.closed.load(Ordering::Acquire));
+
+        // A surface that goes away takes a parked frame with it.
+        engine.release_unseen();
+        assert!(!second.closed.load(Ordering::Acquire));
+        engine.detach();
+        assert!(second.closed.load(Ordering::Acquire));
+        std::fs::remove_file(&clip).expect("remove the clip");
     }
 
     #[test]

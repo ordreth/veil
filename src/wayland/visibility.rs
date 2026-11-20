@@ -14,8 +14,10 @@
 //! `unseen::StallWatch`): a second timer, which runs only while a video plays,
 //! reads the video's frame counts, releases a video nobody sees
 //! (`RenderState::release_unseen`), and leaves a frame callback outstanding on
-//! its surface. The frame handler shows the video again when the compositor
-//! answers it (`RenderState::seen`).
+//! its surface, and one on the video's parked plane, which keeps the last
+//! frame on screen and may hide the surface from the compositor. The frame
+//! handlers show the video again when the compositor answers either
+//! (`RenderState::seen`).
 
 use std::time::{Duration, Instant};
 

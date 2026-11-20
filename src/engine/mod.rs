@@ -167,6 +167,14 @@ pub trait VideoPlane: Send + Sync {
     /// parent, and takes effect only with a commit of that surface.
     fn show(&self, index: usize, place: Rect) -> bool;
 
+    /// The video stops with its last frame on screen, until a new plane above
+    /// this one has a frame and this one is closed: the buffers the compositor
+    /// does not need for that frame are freed. The Wayland side is told when
+    /// the compositor draws the plane again, as by a frame callback of the
+    /// surface, which the plane may hide from the compositor (an opaque video
+    /// that covers it). Nothing is shown after this.
+    fn park(&self);
+
     /// Takes the plane off the surface. Nothing it does after that reaches the
     /// compositor. It must be called before the surface goes away (`detach`).
     fn close(&self);
@@ -402,6 +410,16 @@ pub trait WallpaperEngine {
     /// engine must stop using the surface before this returns, and must work again
     /// after a later `attach` to a new surface. Calling it twice is harmless.
     fn detach(&mut self);
+
+    /// Like `detach`, for a surface that stays but that the compositor does
+    /// not draw (a locked session, a monitor that is off). The engine may keep
+    /// its picture on the surface, so the compositor has it to show when it
+    /// draws the surface again, until the next `attach` has taken over; a
+    /// `detach` removes it. The next call is `attach` to the same surface, or
+    /// `detach`.
+    fn release_unseen(&mut self) {
+        self.detach();
+    }
 
     /// The wallpaper cannot be seen (a fullscreen window is in front of it):
     /// a video stops producing frames, and keeps the one it shows. It may do

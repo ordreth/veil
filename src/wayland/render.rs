@@ -252,17 +252,18 @@ impl RenderState {
     }
 
     /// The compositor does not show the video on the surface (it takes none of
-    /// its frames): a video that plays on it is detached, which ends its
-    /// pipeline, and is not attached again before `seen`. Returns whether that
-    /// happened. Only a video that has started is released: one that is still
-    /// starting reports first, and an image costs nothing while it is shown.
-    /// An engine that waits to replace it is left to start; if it takes over
-    /// while the surface is not drawn, it is released the same way.
+    /// its frames): a video that plays on it is released, which ends its
+    /// pipeline but may leave its last frame on the surface, and is not
+    /// attached again before `seen`. Returns whether that happened. Only a
+    /// video that has started is released: one that is still starting reports
+    /// first, and an image costs nothing while it is shown. An engine that
+    /// waits to replace it is left to start; if it takes over while the
+    /// surface is not drawn, it is released the same way.
     pub fn release_unseen(&mut self) -> bool {
         if !self.attached || !self.engine.is_dynamic() || self.is_starting() {
             return false;
         }
-        self.engine.detach();
+        self.engine.release_unseen();
         self.attached = false;
         self.engine_serial = None;
         self.unseen = true;
