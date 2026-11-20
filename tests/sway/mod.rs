@@ -1,6 +1,7 @@
-//! A headless sway for `tests/headless.rs`: one compositor per test, in a
-//! runtime directory of its own, the real `veil` binary started in it, and
-//! screenshots taken with `grim`.
+//! A headless sway for `tests/headless.rs` and `tests/gpu.rs`: one compositor
+//! per test, in a runtime directory of its own, the real `veil` binary started
+//! in it, and screenshots taken with `grim`. It renders on the CPU (pixman),
+//! or on a GPU for the tests that ask for one.
 //!
 //! The tools come from `nix develop .#headless`: `sway`, `swaymsg`, `grim`,
 //! `foot`, `swaylock` and `gst-launch-1.0` (the media). A tool that is missing
@@ -37,7 +38,7 @@ pub const PATIENCE: Duration = Duration::from_secs(20);
 /// How often a condition is looked at while a test waits for it.
 const POLL: Duration = Duration::from_millis(100);
 
-/// One compositor at a time. They are independent, but each renders on the
+/// One compositor at a time. They are independent, but most render on the
 /// CPU (pixman), and the timings the tests rely on (the pause after a second,
 /// the release after two) should not depend on how many run beside them.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
@@ -58,6 +59,15 @@ pub fn hex(colour: Rgb) -> String {
     format!("#{:02x}{:02x}{:02x}", colour[0], colour[1], colour[2])
 }
 
+/// What a sway draws with.
+pub enum Renderer<'a> {
+    /// On the CPU: the same everywhere, CI included.
+    Pixman,
+    /// wlroots' renderer `name` (`gles2`, `vulkan`) on the GPU of the render
+    /// node `node` (`/dev/dri/renderD128`).
+    Gpu { name: &'a str, node: &'a Path },
+}
+
 /// A headless sway with its outputs, killed and cleaned up when dropped.
 pub struct Sway {
     dir: PathBuf,
@@ -73,6 +83,11 @@ impl Sway {
     /// given sizes, placed side by side from the left. `name` must be unique
     /// among the tests (it is part of the runtime directory).
     pub fn start(name: &str, outputs: &[(u32, u32)]) -> Self {
+        Self::start_with(name, outputs, &Renderer::Pixman)
+    }
+
+    /// [`Sway::start`] with another renderer than pixman.
+    pub fn start_with(name: &str, outputs: &[(u32, u32)], renderer: &Renderer) -> Self {
         assert!(!outputs.is_empty(), "a sway without outputs");
         let turn = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!("veil-hl-{}-{name}", std::process::id()));
@@ -108,12 +123,17 @@ impl Sway {
             .env("XDG_RUNTIME_DIR", &dir)
             .env("WLR_BACKENDS", "headless")
             .env("WLR_HEADLESS_OUTPUTS", outputs.len().to_string())
-            .env("WLR_RENDERER", "pixman")
             .env("WLR_LIBINPUT_NO_DEVICES", "1")
             .env("LIBSEAT_BACKEND", "noop")
             .stdin(Stdio::null())
             .stdout(log.try_clone().expect("clone the log file"))
             .stderr(log);
+        match renderer {
+            Renderer::Pixman => command.env("WLR_RENDERER", "pixman"),
+            Renderer::Gpu { name, node } => command
+                .env("WLR_RENDERER", name)
+                .env("WLR_RENDER_DRM_DEVICE", node),
+        };
         isolate(&mut command, &dir);
         let process = command
             .spawn()
@@ -755,7 +775,7 @@ pub fn wait_for<T>(what: &str, mut probe: impl FnMut() -> Result<T, String>) -> 
 pub struct Media;
 
 impl Media {
-    fn dir() -> PathBuf {
+    pub fn dir() -> PathBuf {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("headless-media");
         std::fs::create_dir_all(&dir).expect("create the media directory");
         dir

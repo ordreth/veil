@@ -201,7 +201,7 @@ What veil is tested on, and what it has been seen working on. The labels: **Test
 | GNOME (Mutter) | Unsupported | No `wlr-layer-shell`. |
 | **Graphics** | | |
 | NVIDIA (NVDEC) | Reported working | RTX 3060 Ti, driver 595.91.07, sway and Hyprland. Every video frame is converted on the CPU ([known issue 7](known-issues.md)). CI has no GPU. |
-| Intel (VA-API) | Reported working | Raptor Lake, Mesa 26.3: frames in dmabufs in a headless sway (benched, [`measurements.md`](measurements.md)), and Hyprland 0.57.2, which takes no YUV dmabufs, so its videos are converted on the CPU ([known issue 7](known-issues.md)). A test of the dmabuf path is still to be written. |
+| Intel (VA-API) | Tested (not in CI) | Raptor Lake, Mesa 26.3: frames in dmabufs and their colours in a headless sway with `vulkan` and `gles2` (`tests/gpu.rs`, run where the GPU is; benched, [`measurements.md`](measurements.md)). Hyprland 0.57.2 (reported working) takes no YUV dmabufs, so its videos are converted on the CPU ([known issue 7](known-issues.md)). |
 | AMD (VA-API) | Untested | Should take the same path as Intel. |
 | Software decoding | Tested | The headless tests in CI (no GPU there), and by taking the hardware decoders out ([troubleshooting](#no-hardware-decoding)). |
 | **Architectures** | | |

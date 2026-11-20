@@ -8,13 +8,14 @@ veil is checked by automated tests only. A behaviour or a number counts as check
 |---|---|---|
 | Unit and integration tests | `cargo test` (inside `nix develop`) | CI, job `fmt / clippy / test / build` |
 | The real daemon in a headless sway | `nix develop .#headless -c cargo test --test headless -- --ignored` | CI, job `headless compositor tests` |
+| Video frames in dmabufs on an Intel or AMD GPU | `nix develop .#headless -c cargo test --test gpu -- --ignored` | Not in CI, which has no such GPU: on a machine that has one |
 | Short soaks: memory, threads and descriptors stay flat | `scripts/bench/soak.sh loop --duration 180` and `scripts/bench/soak.sh switch --switches 200` (inside `nix develop .#headless`, after `cargo build --release`) | CI, job `soak tests (short)`; fails on growth, a failed `veil set` or missing frames |
 | The package, its plugins, completions and man pages | `nix flake check` | CI, job `nix flake check` |
 | The oldest supported Rust | `nix develop .#msrv -c cargo check --locked --all-targets` | CI, job `build with the oldest supported Rust` |
 | The release build against Debian 12's GStreamer | `scripts/release/build.sh --out dist` (Docker) | CI, job `release build (Debian 12 container)` |
 | Licences and advisories of the dependencies | `cargo deny --locked check` | CI, job `cargo deny` |
 
-`cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` run in CI as well. The headless tests are ignored by a plain `cargo test` because they need sway, `grim` and the other tools of the `headless` dev shell.
+`cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` run in CI as well. The headless tests are ignored by a plain `cargo test` because they need sway, `grim` and the other tools of the `headless` dev shell. The GPU tests are ignored too, and are a test binary of their own (`tests/gpu.rs`), so that CI's `--test headless -- --ignored` leaves them out; they take the render node of the first Intel or AMD GPU, or the one in `VEIL_TEST_RENDER_NODE`.
 
 ## What the tests cover
 
@@ -46,6 +47,13 @@ The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a h
 | `saved_and_configured_wallpapers_come_back_after_a_restart` | `veil quit` and `kill -9`, then the saved wallpapers; a configuration file wins for the output it names, and `veil config check` accepts it |
 | `a_video_that_cannot_start_does_not_become_the_default` | a `veil set` of a file GStreamer cannot play fails and changes nothing: not the screen, not the default, not the state file, and an output connected later gets the previous default |
 
+The GPU tests (`tests/gpu.rs`) start the same headless sway rendering on an Intel or AMD GPU, play H.264 clips of four coloured quadrants coded as BT.709 and as BT.601 (limited range, made with ffmpeg) with `vah264dec`, and compare the colours on screen with ffmpeg's decode of the clip, within 4 in each channel (the wrong matrix or range is off by 10 or more in some quadrant):
+
+| Test | What it covers |
+|---|---|
+| `vulkan_takes_bt709_and_bt601_frames_in_dmabufs` | sway with `vulkan` is told the coding (`wp_color_representation_v1`): both clips go to it in dmabufs, none is converted on the CPU, and both show ffmpeg's colours |
+| `gles2_takes_bt601_frames_in_dmabufs_and_bt709_ones_from_the_cpu` | sway with `gles2` cannot be told the coding: the BT.601 clip goes in dmabufs; the BT.709 one is refused there and converted on the CPU, from the VA-API decoder's frames in system memory (known issue 9); both show ffmpeg's colours |
+
 ## Numbers
 
 Every number veil states about itself (CPU, memory, frames shown) comes from `scripts/bench/` ([`measurements.md`](measurements.md)): `bench.sh` for the cost of a wallpaper, `soak.sh` for growth over time. A change that could alter a number is benched against the build before it, alternating the two builds, and the result goes into `measurements.md` with its date and setup. The soaks fail on growth by themselves; `bench.sh` reports, and its numbers are compared by whoever runs it. The bench needs no GPU (a headless sway that renders on the CPU) unless it is given one (`--renderer`, `--render-device`).
@@ -56,7 +64,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **Frames in dmabufs on an Intel or AMD GPU:** that a VA-API decoder's frames go to a headless sway in dmabufs, and that their colours match ffmpeg's decode, with `vulkan` (told the coding) and `gles2` (not told: BT.709 videos converted on the CPU). CI has no such GPU, so this will be an ignored test run where the GPU is.
 - **The sway backend beyond fullscreen:** `--pause-on covered` with tiled windows, and switching workspaces.
 - **The configuration file in a running daemon:** the precedence of flags, the file and `veil set` on several outputs, an output whose file is missing, `outputs = [...]`. The parsing and merging are unit tests (`src/config.rs`).
 - **The systemd unit at run time:** readiness once every output shows its wallpaper, a restart after a crash, the watchdog, no restart for exit statuses 2, 4 and 5.
@@ -70,6 +77,6 @@ These were checked once, by hand, when the feature was added (their procedures a
 What CI and a headless sway cannot reach. Problems here are found by using veil (the developer uses it daily on Hyprland) and through reports:
 
 - **Hyprland itself.** Its backend is tested against a fake Hyprland, not against Hyprland's rendering: whether videos play smoothly there ([known issue 6](known-issues.md)), whether a video in `fill` stands still at its loop point ([known issue 5](known-issues.md)), its lock screen, DPMS and logout.
-- **Graphics cards CI does not have:** CI has no GPU, so hardware decoding (NVIDIA, Intel, AMD) and the dmabuf path are not tested there.
+- **Graphics cards CI does not have:** CI has no GPU, so hardware decoding (NVIDIA, Intel, AMD) and the dmabuf path are not tested there. The dmabuf path on Intel and AMD has tests of its own (`tests/gpu.rs`) that run where such a GPU is; NVIDIA's decoders have none.
 - **aarch64 with a compositor:** the release workflow builds for aarch64 and runs the tests there, but nothing has shown a wallpaper on it.
 - **Compositors other than sway and Hyprland**, and the GStreamer of distributions other than Debian 12 ([known issue 8](known-issues.md)).

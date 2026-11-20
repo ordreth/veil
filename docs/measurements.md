@@ -266,7 +266,7 @@ What it says:
 - **The conversion was the whole cost.** Without it, a 1080p video costs 2 to 8 % of a core, about a tenth to a twentieth. What is left is decoding on the GPU, the event loop, and the sink's handling of every frame.
 - **4K at 60 fps plays in full.** Before, the CPU path lost a third of the frames at 175 % (its two converter threads were not enough); now 60 a second at 7 to 9 %.
 - **Less memory.** No `wl_shm` buffers: the frames stay in the decoder's dmabufs, about 20 MiB less at 1080p and 90 MiB less at 4K.
-- **The colours depend on the compositor knowing the coding.** With colour bars coded as BT.709 and as BT.601 (not a test yet: [`testing.md`](testing.md), "Checks to be turned into tests"), `vulkan` showed both as ffmpeg decodes them, within 3 of 255, once veil told it the coding. `gles2`, told nothing, showed BT.601 right and BT.709 wrong (red 231 instead of 251, cyan with 20 of red), which is why such a video is converted on the CPU there.
+- **The colours depend on the compositor knowing the coding.** With colour bars coded as BT.709 and as BT.601 (now a test: `tests/gpu.rs`, [`testing.md`](testing.md)), `vulkan` showed both as ffmpeg decodes them, within 3 of 255, once veil told it the coding. `gles2`, told nothing, showed BT.601 right and BT.709 wrong (red 231 instead of 251, cyan with 20 of red), which is why such a video is converted on the CPU there.
 
 ## Not measured yet
 
