@@ -761,7 +761,7 @@ mod imp {
                      converting its frames on the CPU",
                     dma.coding
                 ),
-                Stream::Raw(info) => tracing::debug!(
+                Stream::Raw(info) => tracing::info!(
                     "video frames are converted on the CPU, from {:?} ({})",
                     info.format(),
                     info.colorimetry()

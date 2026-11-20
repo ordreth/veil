@@ -211,6 +211,12 @@ fn usable(formats: impl IntoIterator<Item = DrmFormat>) -> Arc<[DrmFormat]> {
     usable.into()
 }
 
+/// Whether any of `formats` is a YCbCr one, the formats of a video decoder's
+/// frames. Hyprland up to 0.57 at least lists only RGB ones.
+fn takes_ycbcr(formats: &[DrmFormat]) -> bool {
+    formats.iter().any(|format| format.is_ycbcr() == Some(true))
+}
+
 impl DmabufHandler for AppState {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.dmabuf.state
@@ -237,6 +243,13 @@ impl DmabufHandler for AppState {
             formats.len(),
             feedback.main_device()
         );
+        if !formats.is_empty() && !takes_ycbcr(&formats) {
+            tracing::info!(
+                "compositor takes dmabufs in no YUV format (NV12, P010, ...): the frames a \
+                 decoder gives in GPU memory cannot go to it, and video frames are converted on \
+                 the CPU"
+            );
+        }
         self.dmabuf.formats = formats;
     }
 
@@ -303,5 +316,20 @@ mod tests {
             format(1, 0),
         ]);
         assert_eq!(*formats, [format(1, 0), format(2, 7)]);
+    }
+
+    #[test]
+    fn a_compositor_with_rgb_formats_only_takes_no_video_frames() {
+        let fourcc = |name: &[u8; 4]| u32::from_le_bytes(*name);
+        // Hyprland 0.57.2 lists RGB formats only.
+        let hyprland = [
+            format(fourcc(b"XR24"), 0),
+            format(fourcc(b"AR24"), 0x0100_0000_0000_0002),
+            format(fourcc(b"XB30"), 0),
+        ];
+        assert!(!takes_ycbcr(&hyprland));
+        let mut sway = hyprland.to_vec();
+        sway.push(format(fourcc(b"NV12"), 0x0100_0000_0000_0002));
+        assert!(takes_ycbcr(&sway));
     }
 }
