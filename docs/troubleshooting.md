@@ -52,7 +52,7 @@ veil builds every video pipeline from GStreamer elements found at run time. If o
 
 | The log or `veil set` says | Missing | In the plugin set |
 |---|---|---|
-| `Internal GLib/GStreamer error: no element "playbin"` | the player | `gst-plugins-base` (or [a stale registry](#a-stale-gstreamer-registry), or [plugins of another GStreamer](#plugins-of-another-gstreamer-version)) |
+| `Failed to construct GStreamer element: Failed to find element factory with name 'playbin' for creating element` | the player | `gst-plugins-base` (or [a stale registry](#a-stale-gstreamer-registry), or [plugins of another GStreamer](#plugins-of-another-gstreamer-version)) |
 | `GStreamer pipeline error: the video cannot be played: Your GStreamer installation is missing a plug-in.`, after a warning `No decoder available for type 'video/webm'` | a demuxer or a decoder for this file | see below |
 
 The type in the warning says which: `video/webm` and `video/x-matroska` need `matroskademux`, `video/quicktime` (MP4, MOV) `qtdemux`, both from `gst-plugins-good`; VP8 and VP9 are decoded by `gst-plugins-good` (`vp8dec`, `vp9dec`), H.264 and HEVC in software by `gst-libav` (`avdec_h264`, `avdec_h265`); `image/gif` (an animated GIF) needs `gst-libav` (`avdemux_gif`, `avdec_gif`). Hardware decoders come from `gst-plugins-bad` (`va`, `nvcodec`) and need a driver (see [No hardware decoding](#no-hardware-decoding)). The package names on Arch, Debian, Ubuntu and Fedora are in the README ([From source](../README.md#from-source)); Fedora's own `gst-libav` has no H.264 or HEVC decoder (`openh264dec` decodes H.264 there).
@@ -89,7 +89,7 @@ veil set --input anim.webm
 
 GStreamer keeps a cache of the plugins it found, the *registry*. A plugin that failed to load once is recorded as failed, and left out for as long as its file keeps its path, modification time and size, even if the reason has gone. In the Nix store files never change, so it is left out for good. Since `nvcodec` declares no dependency on the driver, the same holds for the NVIDIA decoders: a registry written while the driver could not be reached keeps them out after the driver works again (tried: written with `CUDA_VISIBLE_DEVICES=` set, the next start without it still decoded in software). The `va` plugin is scanned again when the render devices, `LIBVA_DRIVER_NAME` or the driver directory change.
 
-**Symptoms:** `no element "videoconvert"` (or another element) although the plugins are installed; a hardware decoder that GStreamer used before is not used any more.
+**Symptoms:** `Failed to find element factory with name 'playbin'` (or another element) although the plugins are installed; a hardware decoder that GStreamer used before is not used any more.
 
 **Fix:** delete the registry; the next start writes a new one (that start takes a second or two longer).
 
@@ -100,7 +100,7 @@ rm ~/.cache/gstreamer-1.0/registry.*.bin         # GStreamer's shared one: every
 
 `GST_REGISTRY` (or `GST_REGISTRY_1_0`), if set, names the file instead. To see what the registry has left out, ask `gst-inspect-1.0` with the same environment: `gst-inspect-1.0 -b` lists the plugins it has blacklisted. The Nix package keeps a registry of its own for this reason: the shared one is rewritten by every GStreamer program with its own plugins (it once lost the base plugins on the developer's machine, 2026-10-15).
 
-Reproduced: a copy of `libgstvideoconvertscale.so` damaged without changing its size or time stamp made the daemon fail with `no element "videoconvert"` (the log had `Failed to load plugin ...: invalid ELF header`); repaired byte for byte, it still failed, and `gst-inspect-1.0 -b` listed it; with the registry deleted the video played.
+Reproduced by a test (`a_stale_registry_keeps_a_plugin_out_until_it_is_deleted` in `tests/headless.rs`): with a copy of `gst-plugins-base` whose `libgstplayback.so` is damaged without changing its size or time stamp, `veil set` of a video fails with `Failed to find element factory with name 'playbin'`; repaired byte for byte, it still fails; with the registry deleted the video plays.
 
 ## Plugins of another GStreamer version
 

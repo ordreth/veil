@@ -51,6 +51,10 @@ The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a h
 | `flags_the_configuration_file_and_set_each_decide_their_part` | the configuration file on three outputs: its defaults, a section's own `mode`, a section whose picture is missing (its `bg_color`, the daemon runs on); `veil set` for one output and for all takes the file's defaults; after a restart `--mode` and `--bg-color` win over the file's defaults, a section's own keys over the flags, and the file over what `veil set` saved |
 | `the_outputs_of_the_file_and_of_the_flags` | `outputs = [...]` in the file: only those outputs are drawn on, one not yet connected is awaited and gets its wallpaper when it comes, `veil set` on another is refused; `--output` replaces the list |
 | `the_service_manager_hears_ready_the_watchdog_and_the_end` | the daemon under a stand-in for systemd (its own `NOTIFY_SOCKET`, `WATCHDOG_USEC` of 400 ms): `READY=1` once, when both outputs play their video and not before; `WATCHDOG=1` every 200 ms, and none from a stopped process; `STOPPING=1` and status 0 after `veil quit`; status 5 when the compositor goes away |
+| `a_missing_plugin_set_fails_as_the_guide_says` | [`troubleshooting.md`](troubleshooting.md) with a plugin set left out of GStreamer's path: without `base` the daemon stops (status 1) for want of `playbin`; without `good` a picture shows, `veil set` of a WebM clip fails with the message the guide quotes and the picture stays, and a daemon started with the clip runs on in its background colour; without `bad` pictures show and VP8 plays in software; with every VP8 decoder ranked out, the warning names `video/x-vp8` |
+| `a_stale_registry_keeps_a_plugin_out_until_it_is_deleted` | a damaged `libgstplayback.so` of the same size and time: `veil set` of a video fails; repaired byte for byte, it still fails with the old registry; with the registry deleted the video plays |
+| `another_wallpaper_program_started_later_stays_on_top` | another program on the background layer (a second veil) started later covers veil: `veil set` succeeds and `veil status` says `shown`, but the other picture stays on screen until that program ends |
+| `output_names_that_are_not_there_fail_as_the_guide_says` | `--output` with a name that is not there or in the wrong case stops the daemon with the guide's message; with one that is there it waits for the other; `set`, `clear` and `pause` for an output not drawn on are refused with the guide's message |
 
 The GPU tests (`tests/gpu.rs`) start the same headless sway rendering on an Intel or AMD GPU, play H.264 clips of four coloured quadrants coded as BT.709 and as BT.601 (limited range, made with ffmpeg) with `vah264dec`, and compare the colours on screen with ffmpeg's decode of the clip, within 4 in each channel (the wrong matrix or range is off by 10 or more in some quadrant):
 
@@ -69,7 +73,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **The failures of [`troubleshooting.md`](troubleshooting.md):** a missing plugin set, demuxer or decoder, a stale registry, another wallpaper program, an unknown output name, with the messages the guide quotes.
 - **The installation on distributions:** the README's packages and build from source, and the release tarball with `install.sh`, on each distribution the README names. CI builds and tests on Debian 12 only.
 
 ### Not covered by any test

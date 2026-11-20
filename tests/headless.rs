@@ -1081,3 +1081,293 @@ fn the_service_manager_hears_ready_the_watchdog_and_the_end() {
         daemon.log()
     );
 }
+
+/// The environment of a daemon whose GStreamer has the dev shell's plugin
+/// sets but those whose directory names contain one of `without`
+/// (`gst-plugins-good-`), and a registry of its own named `registry`, so
+/// that what it finds stays out of the other tests' registry.
+fn plugins_without(sway: &Sway, registry: &str, without: &[&str]) -> Vec<(String, String)> {
+    let path = std::env::var("GST_PLUGIN_SYSTEM_PATH_1_0")
+        .expect("GST_PLUGIN_SYSTEM_PATH_1_0 (run the tests in the dev shell)");
+    let all: Vec<&str> = path.split(':').collect();
+    let kept: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|dir| !without.iter().any(|name| dir.contains(name)))
+        .collect();
+    assert_eq!(
+        kept.len() + without.len(),
+        all.len(),
+        "{without:?} in {path}"
+    );
+    plugin_env(sway, registry, &kept.join(":"))
+}
+
+/// GStreamer's plugin path `path` and a registry of its own named
+/// `registry`, in the test's directory.
+fn plugin_env(sway: &Sway, registry: &str, path: &str) -> Vec<(String, String)> {
+    let registry = sway.dir().join(registry).display().to_string();
+    vec![
+        ("GST_PLUGIN_SYSTEM_PATH_1_0".into(), path.into()),
+        ("GST_REGISTRY_1_0".into(), registry.clone()),
+        ("GST_REGISTRY".into(), registry),
+    ]
+}
+
+/// Gives `command` the variables of `env`, and no other plugin path.
+fn with_env(env: &[(String, String)]) -> impl FnOnce(&mut std::process::Command) + '_ {
+    move |command| {
+        command
+            .env_remove("GST_PLUGIN_PATH")
+            .env_remove("GST_PLUGIN_PATH_1_0")
+            .env_remove("GST_PLUGIN_SYSTEM_PATH")
+            .envs(env.iter().map(|(name, value)| (name, value)));
+    }
+}
+
+fn stderr_of(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn a_missing_plugin_set_fails_as_the_guide_says() {
+    let sway = Sway::start("plugins", &[(640, 360)]);
+    let clip = ball();
+    let red = Media::png(64, 36, RED);
+
+    // Without gst-plugins-base there is no player: the daemon stops (1).
+    let env = plugins_without(&sway, "no-base.bin", &["gst-plugins-base-"]);
+    let mut daemon = sway.spawn_daemon(&["--input", arg(&clip)], with_env(&env));
+    assert_eq!(daemon.wait().code(), Some(1), "{}", daemon.log());
+    assert!(
+        daemon
+            .log()
+            .contains("Failed to find element factory with name 'playbin'"),
+        "{}",
+        daemon.log()
+    );
+
+    // Without gst-plugins-good there is no WebM demuxer: a picture shows,
+    // `veil set` of the clip fails and the picture stays.
+    let env = plugins_without(&sway, "no-good.bin", &["gst-plugins-good-"]);
+    let daemon = sway.daemon_with(&["--input", arg(&red)], with_env(&env));
+    sway.wait_for_centre("HEADLESS-1", RED);
+    let refused = sway.veil(&["set", "--input", arg(&clip)]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert!(
+        stderr_of(&refused).contains("Your GStreamer installation is missing a plug-in."),
+        "{refused:?}"
+    );
+    assert!(
+        daemon
+            .log()
+            .contains("No decoder available for type 'video/webm'"),
+        "{}",
+        daemon.log()
+    );
+    assert_eq!(sway.centre("HEADLESS-1"), RED);
+    assert_eq!(daemon.stop().code(), Some(0));
+    // Started with the clip, the daemon runs on, in the background colour.
+    let daemon = sway.daemon_with(
+        &["--input", arg(&clip), "--bg-color", &hex(BLUE)],
+        with_env(&env),
+    );
+    sway.wait_for_state("HEADLESS-1", State::Stopped);
+    assert_eq!(sway.centre("HEADLESS-1"), BLUE);
+    assert_eq!(daemon.stop().code(), Some(0));
+
+    // Without gst-plugins-bad: pictures, and VP8 decoded in software.
+    let env = plugins_without(&sway, "no-bad.bin", &["gst-plugins-bad-"]);
+    let daemon = sway.daemon_with(&["--input", arg(&red)], with_env(&env));
+    sway.wait_for_centre("HEADLESS-1", RED);
+    sway.veil_ok(&["set", "--input", arg(&clip)]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+    assert!(daemon.log().contains("(software)"), "{}", daemon.log());
+    assert_eq!(daemon.stop().code(), Some(0));
+
+    // Every set, and every VP8 decoder ranked out: the type in the warning
+    // names what is missing.
+    let mut env = plugins_without(&sway, "no-vp8.bin", &[]);
+    env.push((
+        "GST_PLUGIN_FEATURE_RANK".into(),
+        "vp8dec:0,vavp8dec:0,nvvp8dec:0,avdec_vp8:0".into(),
+    ));
+    let daemon = sway.daemon_with(&["--input", arg(&red)], with_env(&env));
+    sway.wait_for_centre("HEADLESS-1", RED);
+    let refused = sway.veil(&["set", "--input", arg(&clip)]);
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert!(
+        daemon
+            .log()
+            .contains("No decoder available for type 'video/x-vp8"),
+        "{}",
+        daemon.log()
+    );
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn a_stale_registry_keeps_a_plugin_out_until_it_is_deleted() {
+    let sway = Sway::start("registry", &[(640, 360)]);
+    let clip = ball();
+    let red = Media::png(64, 36, RED);
+
+    // gst-plugins-base copied, with its files' times, and the plugin of
+    // `playbin` damaged without changing its size or time.
+    let path = std::env::var("GST_PLUGIN_SYSTEM_PATH_1_0").expect("the dev shell's plugin path");
+    let base = path
+        .split(':')
+        .find(|dir| dir.contains("gst-plugins-base-"))
+        .expect("gst-plugins-base on the plugin path");
+    let copy = sway.dir().join("base");
+    let copied = std::process::Command::new("cp")
+        .args(["-rp", base])
+        .arg(&copy)
+        .status()
+        .expect("run cp");
+    assert!(copied.success());
+    // Files from the Nix store are read-only, and so is their copy.
+    let writable = std::process::Command::new("chmod")
+        .args(["-R", "u+w"])
+        .arg(&copy)
+        .status()
+        .expect("run chmod");
+    assert!(writable.success());
+    let plugin = copy.join("libgstplayback.so");
+    let original = std::path::Path::new(base).join("libgstplayback.so");
+    let size = std::fs::metadata(&original).expect("the plugin").len();
+    let replace = |with: &dyn Fn(&std::path::Path)| {
+        let _ = std::fs::remove_file(&plugin);
+        with(&plugin);
+        let touched = std::process::Command::new("touch")
+            .arg("-r")
+            .arg(&original)
+            .arg(&plugin)
+            .status()
+            .expect("run touch");
+        assert!(touched.success());
+    };
+    replace(&|file| {
+        std::fs::write(file, vec![0x5a; usize::try_from(size).expect("a size")])
+            .expect("write the damaged plugin");
+    });
+    let kept: Vec<String> = path
+        .split(':')
+        .map(|dir| {
+            if dir == base {
+                copy.display().to_string()
+            } else {
+                dir.to_owned()
+            }
+        })
+        .collect();
+    let env = plugin_env(&sway, "stale.bin", &kept.join(":"));
+    let refuses_the_clip = |what: &str| {
+        let daemon = sway.daemon_with(&["--input", arg(&red)], with_env(&env));
+        sway.wait_for_centre("HEADLESS-1", RED);
+        let refused = sway.veil(&["set", "--input", arg(&clip)]);
+        assert_eq!(refused.status.code(), Some(1), "{what}: {refused:?}");
+        assert!(
+            stderr_of(&refused).contains("Failed to find element factory with name 'playbin'"),
+            "{what}: {refused:?}\n{}",
+            daemon.log()
+        );
+        assert_eq!(sway.centre("HEADLESS-1"), RED);
+        assert_eq!(daemon.stop().code(), Some(0));
+    };
+    refuses_the_clip("damaged");
+
+    // Repaired byte for byte: the registry still has it as failed.
+    replace(&|file| {
+        std::fs::copy(&original, file).expect("copy the plugin back");
+    });
+    refuses_the_clip("repaired, with the old registry");
+
+    // The registry deleted: the next start scans the plugin again.
+    std::fs::remove_file(sway.dir().join("stale.bin")).expect("delete the registry");
+    let daemon = sway.daemon_with(&["--input", arg(&clip)], with_env(&env));
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn another_wallpaper_program_started_later_stays_on_top() {
+    let sway = Sway::start("another", &[(640, 360)]);
+    let daemon = sway.daemon(&["--input", arg(&Media::png(64, 36, RED))]);
+    sway.wait_for_centre("HEADLESS-1", RED);
+
+    // Another program on the background layer, started later: here a second
+    // veil, with a runtime directory and a state of its own.
+    let other_dir = sway.dir().join("other");
+    std::fs::create_dir_all(&other_dir).expect("create the other runtime directory");
+    let socket = sway.wayland_socket();
+    let other = sway.spawn_daemon(&["--input", arg(&Media::png(64, 36, BLUE))], |command| {
+        command
+            .env("XDG_RUNTIME_DIR", &other_dir)
+            .env("XDG_STATE_HOME", other_dir.join("state"))
+            .env("WAYLAND_DISPLAY", &socket)
+            .env_remove("SWAYSOCK");
+    });
+    sway.wait_for_centre("HEADLESS-1", BLUE);
+
+    // `veil set` succeeds and veil says it shows the picture, which stays
+    // under the other program's.
+    let green = Media::png(64, 36, GREEN);
+    sway.veil_ok(&["set", "--input", arg(&green)]);
+    let status = sway.wait_for_state("HEADLESS-1", State::Shown);
+    assert_eq!(status.wallpaper.input.as_deref(), Some(arg(&green)));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(sway.centre("HEADLESS-1"), BLUE);
+
+    // With the other program gone, veil's picture is seen.
+    assert_eq!(other.stop().code(), Some(0));
+    sway.wait_for_centre("HEADLESS-1", GREEN);
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn output_names_that_are_not_there_fail_as_the_guide_says() {
+    let sway = Sway::start("names", &[(640, 360)]);
+
+    // An output that is not there, or a name in the wrong case: no start.
+    for name in ["DP-9", "headless-1"] {
+        let mut daemon = sway.spawn_daemon(&["--output", name], |_| {});
+        assert_eq!(daemon.wait().code(), Some(1), "{}", daemon.log());
+        let message = format!("Output '{name}' was not found; available outputs: HEADLESS-1");
+        assert!(daemon.log().contains(&message), "{}", daemon.log());
+    }
+
+    // One that is there and one that is not: the daemon waits for it.
+    let daemon = sway.daemon(&["--output", "DP-9", "--output", "HEADLESS-1"]);
+    daemon.wait_for_log("output DP-9 not connected; waiting for it (connected: HEADLESS-1)");
+    assert_eq!(daemon.stop().code(), Some(0));
+
+    // A command for an output the daemon does not draw on.
+    let daemon = sway.daemon(&[]);
+    for command in [
+        &[
+            "set",
+            "--input",
+            arg(&Media::png(64, 36, RED)),
+            "--output",
+            "DP-9",
+        ][..],
+        &["clear", "--output", "DP-9"],
+        &["pause", "--output", "DP-9"],
+    ] {
+        let refused = sway.veil(command);
+        assert_eq!(refused.status.code(), Some(1), "{command:?}: {refused:?}");
+        assert!(
+            stderr_of(&refused)
+                .contains("output 'DP-9' is not driven by this daemon; it draws on HEADLESS-1"),
+            "{command:?}: {refused:?}"
+        );
+    }
+    assert_eq!(daemon.stop().code(), Some(0));
+}

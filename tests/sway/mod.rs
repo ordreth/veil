@@ -385,6 +385,23 @@ impl Sway {
     /// (an environment variable, another program in front of it), and waits
     /// until it answers.
     pub fn daemon_with(&self, args: &[&str], adjust: impl FnOnce(&mut Command)) -> Daemon {
+        let mut daemon = self.spawn_daemon(args, adjust);
+        wait_for("the daemon to answer", || {
+            if let Some(status) = daemon.try_wait() {
+                panic!("the daemon exited with {status}:\n{}", daemon.log());
+            }
+            if self.veil(&["ping"]).status.success() {
+                Ok(())
+            } else {
+                Err(daemon.log())
+            }
+        });
+        daemon
+    }
+
+    /// Starts `veil daemon` as [`Sway::daemon_with`] does, without waiting
+    /// for it: for a daemon that is to fail.
+    pub fn spawn_daemon(&self, args: &[&str], adjust: impl FnOnce(&mut Command)) -> Daemon {
         let log_path = self.dir.join(format!(
             "daemon-{}.log",
             std::fs::read_dir(&self.dir)
@@ -412,21 +429,10 @@ impl Sway {
         self.env(&mut command);
         adjust(&mut command);
         let process = command.spawn().expect("start veil daemon");
-        let mut daemon = Daemon {
+        Daemon {
             process,
             log: log_path,
-        };
-        wait_for("the daemon to answer", || {
-            if let Some(status) = daemon.try_wait() {
-                panic!("the daemon exited with {status}:\n{}", daemon.log());
-            }
-            if self.veil(&["ping"]).status.success() {
-                Ok(())
-            } else {
-                Err(daemon.log())
-            }
-        });
-        daemon
+        }
     }
 
     /// Sends one raw request line to the daemon and returns its answer.
@@ -472,6 +478,12 @@ impl Sway {
                 Err(format!("last status: {status:?}"))
             }
         })
+    }
+
+    /// The compositor's Wayland socket, as an absolute path (what
+    /// `WAYLAND_DISPLAY` may also be).
+    pub fn wayland_socket(&self) -> PathBuf {
+        self.dir.join(&self.display)
     }
 
     /// Ends the compositor, as a session that is over does.
