@@ -347,6 +347,139 @@ fn a_video_pauses_behind_a_fullscreen_window() {
     assert_eq!(sway.output_status("HEADLESS-1").state, State::Playing);
 }
 
+/// Asserts that `output` is still in `state` once a pause or a resume, had
+/// one been decided, would have come.
+fn stays(sway: &Sway, output: &str, state: State) {
+    std::thread::sleep(policy_delay());
+    let status = sway.output_status(output);
+    assert_eq!(status.state, state, "{output}: {status:?}");
+}
+
+/// A pause comes a second after the event; half a second more for the rest.
+fn policy_delay() -> Duration {
+    veil::policy::PAUSE_DELAY + Duration::from_millis(500)
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn windows_that_cover_the_output_pause_its_video() {
+    let sway = Sway::start("covered", &[(640, 360)]);
+    let daemon = sway.daemon(&[
+        "--input",
+        arg(&ball()),
+        "--pause-on",
+        "covered",
+        "--release-unseen-after",
+        "0",
+    ]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    daemon.wait_for_log("following sway");
+
+    // One tiled window fills the workspace, title bar included.
+    let _left = sway.window("left");
+    let status = sway.wait_for_state("HEADLESS-1", State::Paused);
+    assert!(status.hidden && !status.paused_by_user, "{status:?}");
+
+    // Two tiled windows, then one of them small and floating: the other one
+    // fills the workspace alone. Never played in between.
+    let _right = sway.window("right");
+    let plays = daemon.logged("playing it");
+    sway.msg(&["[app_id=left]", "floating", "enable"]);
+    sway.msg(&["[app_id=left]", "resize", "set", "200", "100"]);
+    sway.msg(&["[app_id=left]", "move", "position", "0", "0"]);
+    stays(&sway, "HEADLESS-1", State::Paused);
+    assert_eq!(daemon.logged("playing it"), plays, "{}", daemon.log());
+
+    // Both floating and small: most of the output is seen.
+    sway.msg(&["[app_id=right]", "floating", "enable"]);
+    sway.msg(&["[app_id=right]", "resize", "set", "200", "100"]);
+    sway.msg(&["[app_id=right]", "move", "position", "400", "250"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+
+    sway.msg(&["[app_id=right]", "floating", "disable"]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+
+    // An empty workspace shows the wallpaper; the covered one hides it again.
+    sway.msg(&["workspace", "2"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+    sway.msg(&["workspace", "1"]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+
+    // A tabbed layout: the tab bar and the window still fill the output.
+    sway.msg(&["[app_id=right]", "layout", "tabbed"]);
+    stays(&sway, "HEADLESS-1", State::Paused);
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
+/// The name of the workspace `output` shows.
+fn workspace_of(sway: &Sway, output: &str) -> String {
+    let outputs = sway.msg(&["-t", "get_outputs"]);
+    outputs
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|o| o["name"] == output)
+        .and_then(|o| o["current_workspace"].as_str())
+        .unwrap_or_else(|| panic!("no workspace on {output}: {outputs}"))
+        .to_owned()
+}
+
+#[test]
+#[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
+fn the_pause_follows_workspaces_across_outputs() {
+    let sway = Sway::start("workspaces", &[(640, 360), (640, 360)]);
+    let daemon = sway.daemon(&["--input", arg(&ball()), "--release-unseen-after", "0"]);
+    for output in ["HEADLESS-1", "HEADLESS-2"] {
+        sway.wait_for_state(output, State::Playing);
+    }
+    daemon.wait_for_log("following sway");
+    // sway numbers the workspaces in the order it set the outputs up, which
+    // varies: take whichever HEADLESS-1 shows.
+    sway.msg(&["focus", "output", "HEADLESS-1"]);
+    let home = workspace_of(&sway, "HEADLESS-1");
+
+    // `--pause-on fullscreen`, the default: a tiled window pauses nothing.
+    let _window = sway.window("cover");
+    stays(&sway, "HEADLESS-1", State::Playing);
+    assert_eq!(daemon.logged("pausing it"), 0, "{}", daemon.log());
+
+    sway.msg(&["[app_id=cover]", "fullscreen", "enable"]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+    stays(&sway, "HEADLESS-2", State::Playing);
+
+    // Another workspace on the same output, and back.
+    sway.msg(&["workspace", "empty"]);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+    sway.msg(&["workspace", &home]);
+    sway.wait_for_state("HEADLESS-1", State::Paused);
+
+    // The workspace moves to the other output, and the pause with it.
+    sway.msg(&["move", "workspace", "to", "output", "HEADLESS-2"]);
+    sway.wait_for_state("HEADLESS-2", State::Paused);
+    sway.wait_for_state("HEADLESS-1", State::Playing);
+    assert!(sway.moves("HEADLESS-1"));
+
+    // Fullscreen over every output.
+    sway.msg(&["[app_id=cover]", "fullscreen", "disable"]);
+    sway.wait_for_state("HEADLESS-2", State::Playing);
+    sway.msg(&["[app_id=cover]", "fullscreen", "enable", "global"]);
+    for output in ["HEADLESS-1", "HEADLESS-2"] {
+        let status = sway.wait_for_state(output, State::Paused);
+        assert!(status.hidden, "{output}: {status:?}");
+    }
+    // The window is tiled again on HEADLESS-2, and hides the video playing
+    // there from the screenshots.
+    sway.msg(&["[app_id=cover]", "fullscreen", "disable"]);
+    for output in ["HEADLESS-1", "HEADLESS-2"] {
+        sway.wait_for_state(output, State::Playing);
+    }
+    assert!(sway.moves("HEADLESS-1"));
+    assert_eq!(daemon.stop().code(), Some(0));
+}
+
 #[test]
 #[ignore = "needs a headless sway: nix develop .#headless -c cargo test --test headless -- --ignored"]
 fn a_video_pauses_behind_a_fullscreen_window_on_hyprland() {

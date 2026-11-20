@@ -41,6 +41,8 @@ The headless tests (`tests/headless.rs`; the harness is `tests/sway/`) start a h
 | `the_latest_set_wins_on_each_output` | four `veil set` sent before the first is answered: the last per output is shown, the others succeed or are replaced, and no replaced one raises a desktop notification |
 | `output_changes_while_videos_play_leave_them_playing` | known issue 1: with a video on two outputs, a scale change, a move, a disable and enable, a power off and on within a second and a new output leave the daemon running and every video moving |
 | `a_video_pauses_behind_a_fullscreen_window` | the sway backend: a fullscreen `foot` pauses the video after a second (CPU a quarter of playing at most), closing it plays it again, five fullscreen toggles 200 ms apart pause nothing |
+| `windows_that_cover_the_output_pause_its_video` | `--pause-on covered` on sway: one tiled window (title bar included) pauses the video; with a second window, floating one of them changes nothing; two small floating windows play it; switching to an empty workspace plays it and back pauses it; a tabbed layout still covers |
+| `the_pause_follows_workspaces_across_outputs` | `--pause-on fullscreen` on sway with two outputs: a tiled window pauses nothing; a fullscreen one pauses only its output; another workspace on that output plays it, back pauses it; moving the workspace to the other output moves the pause; `fullscreen global` pauses both outputs |
 | `a_video_pauses_behind_a_fullscreen_window_on_hyprland` | the Hyprland backend against a fake Hyprland: `fullscreen>>1` pauses, `fullscreen>>0` plays |
 | `a_locked_screen_and_a_powered_off_output_release_the_video` | `swaylock` and `power off`/`on` release the video (no bus thread, fewer descriptors, at most 2 CPU ticks in 2 s) and it plays again after unlock and power on |
 | `the_daemon_answers_every_command_and_error_code` | the IPC table against the real daemon: every command, and every error code but `forbidden` (which needs a client of another user) |
@@ -64,7 +66,6 @@ Every number veil states about itself (CPU, memory, frames shown) comes from `sc
 
 These were checked once, by hand, when the feature was added (their procedures are in the history of `docs/manual-tests.md`), and are to become tests, one at a time:
 
-- **The sway backend beyond fullscreen:** `--pause-on covered` with tiled windows, and switching workspaces.
 - **The configuration file in a running daemon:** the precedence of flags, the file and `veil set` on several outputs, an output whose file is missing, `outputs = [...]`. The parsing and merging are unit tests (`src/config.rs`).
 - **The systemd unit at run time:** readiness once every output shows its wallpaper, a restart after a crash, the watchdog, no restart for exit statuses 2, 4 and 5.
 - **The Nix package outside the dev shell:** a video plays with the package's wrapper in an empty environment.
