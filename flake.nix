@@ -137,7 +137,8 @@
           # The default shell plus a compositor to run veil in: the headless
           # sway of `tests/headless.rs` and `scripts/bench/`, the screenshot
           # and client tools they drive, and what the benchmark needs to make
-          # its clips (ffmpeg) and read the daemon's answers (jq).
+          # its clips (ffmpeg) and read the daemon's answers (jq), and the
+          # linters of the scripts and workflows. `shell.nix` is the same.
           headless = pkgs.mkShell {
             inputsFrom = [ default ];
             packages = with pkgs; [
@@ -147,6 +148,8 @@
               swaylock
               jq
               ffmpeg-headless
+              shellcheck
+              actionlint
             ];
             # The test windows (foot) need a font, wherever the shell runs.
             FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
