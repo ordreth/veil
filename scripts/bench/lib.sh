@@ -28,7 +28,7 @@ bench_cleanup() {
 # The daemon's own directories: never the saved wallpapers or the
 # configuration file of the user who runs this, and no desktop notifications.
 bench_isolate() {
-    work=$(mktemp -d /tmp/veil-bench.XXXXXX)
+    work=$(mktemp -d "${TMPDIR:-/tmp}/veil-bench.XXXXXX")
     trap bench_cleanup EXIT
     export XDG_STATE_HOME=$work/state XDG_CONFIG_HOME=$work/config
     export DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent/veil-bench-bus
