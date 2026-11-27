@@ -3071,7 +3071,7 @@ Used by:
   * proc-macro2 1.0.107 (https://github.com/dtolnay/proc-macro2)
   * quote 1.0.47 (https://github.com/dtolnay/quote)
   * rustix 0.38.44 (https://github.com/bytecodealliance/rustix)
-  * rustix 1.1.5 (https://github.com/bytecodealliance/rustix)
+  * rustix 1.1.6 (https://github.com/bytecodealliance/rustix)
   * serde 1.0.229 (https://github.com/serde-rs/serde)
   * serde_core 1.0.229 (https://github.com/serde-rs/serde)
   * serde_derive 1.0.229 (https://github.com/serde-rs/serde)
