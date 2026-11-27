@@ -23,10 +23,10 @@ jobs:
     name: test media
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
       - run: nix develop .#headless --command scripts/release/test-media.sh media
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: media
           path: media/
@@ -36,10 +36,10 @@ jobs:
     name: release tarball (x86_64)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The release build; its tests run in CI and in the release workflow.
       - run: scripts/release/build.sh --out dist --no-tests
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tarball
           path: dist/*.tar.gz
@@ -64,12 +64,12 @@ jobs:
         # The distributions the README lists under "Prebuilt binaries".
         image: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "fedora:44", "archlinux:latest"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: media
           path: media
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tarball
           path: dist
@@ -94,8 +94,8 @@ jobs:
         # The distributions the README lists under "From source".
         image: ["archlinux:latest", "debian:13", "ubuntu:26.04", "fedora:44"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: media
           path: media

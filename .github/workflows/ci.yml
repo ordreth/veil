@@ -17,7 +17,7 @@ jobs:
     name: fmt / clippy / test / build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
@@ -36,7 +36,7 @@ jobs:
     name: headless compositor tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
@@ -53,7 +53,7 @@ jobs:
     name: soak tests (short)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
@@ -72,7 +72,7 @@ jobs:
         run: nix develop .#headless --command scripts/bench/soak.sh switch --switches 200 --out target/bench/ci-switch
       - name: Keep the reports and graphs
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: soak
           path: |
@@ -84,7 +84,7 @@ jobs:
     name: nix flake check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
       # The package (its build runs the tests with the GStreamer plugins),
       # clippy, rustfmt, the plugin set of the wrapped binary, and a video
@@ -95,7 +95,7 @@ jobs:
     name: build with the oldest supported Rust
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
@@ -108,7 +108,7 @@ jobs:
     name: release build (Debian 12 container)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # What a version tag builds (release.yml), here on every change so the
       # release scripts cannot rot between releases: the tests against
       # Debian 12's GStreamer 1.22, the release binary and its tarball.
@@ -119,7 +119,7 @@ jobs:
     name: cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
