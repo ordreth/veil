@@ -4,14 +4,16 @@ description: "O que muda para os usuários, lançamento a lançamento."
 group: "Project"
 order: 11
 source: "CHANGELOG.md"
-source_hash: "659a87d42b909df606804da78d6deeeb879986bd78deec107c74f546baee1a96"
+source_hash: "a551d3e473e034f47070bda95725ad64c212233c1bb858d9ebef3b396b996162"
 ---
 
 Toda mudança que um usuário do veil pode perceber é registrada aqui. O formato segue o [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), e o veil usa o [versionamento semântico](https://semver.org/spec/v2.0.0.html) a partir da 1.0. O que conta como interface do veil para o número da versão: a linha de comando (comandos, flags, valores, o que o `--json` imprime), os códigos de saída, o protocolo do socket de controle ([`docs/ipc.md`](/apps/veil/docs/ipc)), as chaves do arquivo de configuração ([`docs/configuration.md`](/apps/veil/docs/configuration)) e o arquivo de estado.
 
-O veil 1.0.0-beta.1 é o primeiro lançamento, um beta. Tudo o que está abaixo faz parte dele. As limitações conhecidas e deixadas em aberto de propósito estão em [`docs/known-issues.md`](/apps/veil/docs/known-issues); as mais importantes são listadas ao fim da seção.
+O veil 1.0.0-beta.1 foi o primeiro lançamento, um beta, e o 1.0.0-beta.2 o segundo. As limitações conhecidas e deixadas em aberto de propósito estão em [`docs/known-issues.md`](/apps/veil/docs/known-issues); as do primeiro lançamento são listadas ao fim da seção dele.
 
 ## [Não lançado]
+
+## [1.0.0-beta.2] - 2026-11-27
 
 ### Adicionado
 

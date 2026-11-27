@@ -2,9 +2,11 @@
 
 Every change a user of veil can notice is recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and veil uses [semantic versioning](https://semver.org/spec/v2.0.0.html) from 1.0 on. What counts as veil's interface for the version number: the command line (commands, flags, values, what `--json` prints), the exit statuses, the control-socket protocol ([`docs/ipc.md`](docs/ipc.md)), the keys of the configuration file ([`docs/configuration.md`](docs/configuration.md)) and the state file.
 
-veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The limitations that are known and left open on purpose are in [`docs/known-issues.md`](docs/known-issues.md); the most important ones are listed at the end of the section.
+veil 1.0.0-beta.1 was the first release, a beta, and 1.0.0-beta.2 the second. The limitations that are known and left open on purpose are in [`docs/known-issues.md`](docs/known-issues.md); those of the first release are listed at the end of its section.
 
 ## [Unreleased]
+
+## [1.0.0-beta.2] - 2026-11-27
 
 ### Added
 
@@ -64,5 +66,6 @@ veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The l
 - With the prebuilt binary on a GStreamer older than 1.26 (Debian 12, Ubuntu 22.04 and 24.04), animated GIFs stand still or do not start, because of GStreamer's GIF demuxer (on Debian 12 it also keeps a CPU core busy); converted to a video they play. On Ubuntu 24.04, 1080p videos showed only part of their frames in a headless sway (known issue 8).
 - Everything so far was checked in a headless sway on an NVIDIA card; the checks in a real Hyprland session, and on Intel and AMD cards, are still to be done.
 
-[Unreleased]: https://github.com/ordreth/veil/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/ordreth/veil/compare/v1.0.0-beta.2...HEAD
+[1.0.0-beta.2]: https://github.com/ordreth/veil/compare/v1.0.0-beta.1...v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ordreth/veil/releases/tag/v1.0.0-beta.1
