@@ -1,6 +1,6 @@
 [package]
 name = "veil"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3-dev"
 edition = "2021"
 # The oldest Rust veil builds with: `notify-rust` 4.18 needs 1.89. CI checks
 # it (`nix develop .#msrv`, which reads this field).

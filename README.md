@@ -391,7 +391,7 @@ Start with `veil status` (what each monitor shows, and whether a video plays, wa
 
 ## Versions and branches
 
-Every release is a tag (`v1.0.0-beta.1`) with its tarballs on the [releases page](https://github.com/ordreth/veil/releases) and an entry in [`CHANGELOG.md`](CHANGELOG.md). The `stable` branch always points at the latest release: install from it ([Nix](#nix-and-nixos), [from source](#from-source)). `main` is where the work towards the next release happens; it passes the same automated tests, but it is not checked in a real session the way a release is, and its version ends in `-dev` (`1.0.0-beta.2-dev`) so that a report says which code it came from. The CHANGELOG's `[Unreleased]` section says what `main` has that the latest release has not.
+Every release is a tag (`v1.0.0-beta.1`) with its tarballs on the [releases page](https://github.com/ordreth/veil/releases) and an entry in [`CHANGELOG.md`](CHANGELOG.md). The `stable` branch always points at the latest release: install from it ([Nix](#nix-and-nixos), [from source](#from-source)). `main` is where the work towards the next release happens; it passes the same automated tests, but it is not checked in a real session the way a release is, and its version ends in `-dev` (`1.0.0-beta.3-dev`) so that a report says which code it came from. The CHANGELOG's `[Unreleased]` section says what `main` has that the latest release has not.
 
 ## Reporting problems
 
