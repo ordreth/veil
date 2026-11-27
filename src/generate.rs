@@ -34,7 +34,73 @@ pub fn completions(shell: Shell) -> Result<String, VeilError> {
         what: format!("the {shell:?} completions"),
         source,
     })?;
-    Ok(String::from_utf8_lossy(&script).into_owned())
+    let mut script = String::from_utf8_lossy(&script).into_owned();
+    if shell == Shell::Fish {
+        for sub in cmd.get_subcommands() {
+            fish_positionals(sub, &[], &mut script);
+        }
+    }
+    Ok(script)
+}
+
+/// What the fish generator of `clap_complete` leaves out: it completes
+/// options only ("currently only supports named options", its documentation
+/// says), so fish offered files after `veil completions `. One line for each
+/// positional argument with a fixed set of values, written as the generator
+/// writes those of an option, and under the conditions it gives the options
+/// of the same command (its helpers `__fish_veil_using_subcommand` and
+/// fish's `__fish_seen_subcommand_from`; like the generator, two levels of
+/// commands at most). The values are offered until one of them, or an alias,
+/// is on the line.
+fn fish_positionals(cmd: &clap::Command, parents: &[&str], script: &mut String) {
+    let path: Vec<&str> = parents.iter().copied().chain([cmd.get_name()]).collect();
+    let condition = match path.as_slice() {
+        [command] => format!("__fish_{BIN}_using_subcommand {command}"),
+        [command, sub] => {
+            format!(
+                "__fish_{BIN}_using_subcommand {command}; and __fish_seen_subcommand_from {sub}"
+            )
+        }
+        _ => return,
+    };
+    let quoted = |text: &str| {
+        text.replace('\\', "\\\\")
+            .replace('\'', "\\'")
+            .replace('\n', " ")
+    };
+    for arg in cmd.get_positionals().filter(|arg| !arg.is_hide_set()) {
+        let values: Vec<_> = arg
+            .get_possible_values()
+            .into_iter()
+            .filter(|value| !value.is_hide_set())
+            .collect();
+        if values.is_empty() {
+            continue;
+        }
+        let seen: Vec<&str> = values
+            .iter()
+            .flat_map(|value| value.get_name_and_aliases())
+            .collect();
+        let offered: Vec<String> = values
+            .iter()
+            .map(|value| {
+                let help = value.get_help().map(|help| help.to_string());
+                format!(
+                    "{}\\t'{}'",
+                    quoted(value.get_name()),
+                    quoted(help.as_deref().unwrap_or_default())
+                )
+            })
+            .collect();
+        script.push_str(&format!(
+            "complete -c {BIN} -n \"{condition}; and not __fish_seen_subcommand_from {}\" -f -a \"{}\"\n",
+            seen.join(" "),
+            offered.join("\n")
+        ));
+    }
+    for sub in cmd.get_subcommands() {
+        fish_positionals(sub, &path, script);
+    }
 }
 
 /// The command line as the completions offer it: without what `--help`
@@ -295,18 +361,28 @@ mod tests {
             for word in ["bg-color", "no-persist", "pause-on", "covered"] {
                 assert!(script.contains(word), "{shell:?}: {word}");
             }
-            // The fish generator does not complete positional arguments, so
-            // fish does not offer the shells of `veil completions`.
-            assert_eq!(
-                script.contains("nushell"),
-                shell != Shell::Fish,
-                "{shell:?}"
-            );
+            // The shells of `veil completions`, a positional argument (which
+            // the fish generator leaves to `fish_positionals`).
+            assert!(script.contains("nushell"), "{shell:?}");
             // The deprecated top-level flag and the packaging command.
             for hidden in ["--daemon", "-l daemon", "man-pages", "man_pages"] {
                 assert!(!script.contains(hidden), "{shell:?}: {hidden}");
             }
         }
+    }
+
+    #[test]
+    fn fish_offers_the_shells_of_veil_completions_and_no_files() {
+        let script = completions(Shell::Fish).expect("a script");
+        let line = "complete -c veil -n \"__fish_veil_using_subcommand completions; \
+                    and not __fish_seen_subcommand_from bash zsh fish nushell nu\" -f \
+                    -a \"bash\\t''\nzsh\\t''\nfish\\t''\nnushell\\t''\"\n";
+        assert!(script.contains(line), "{script}");
+        // No other command has a positional argument with values.
+        assert_eq!(
+            script.matches("__fish_seen_subcommand_from bash").count(),
+            1
+        );
     }
 
     #[test]

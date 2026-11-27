@@ -6,6 +6,10 @@ veil 1.0.0-beta.1 was the first release, a beta, and 1.0.0-beta.2 the second. Th
 
 ## [Unreleased]
 
+### Fixed
+
+- fish completes the shells of `veil completions` (`bash`, `zsh`, `fish`, `nushell`) instead of offering files. The fish generator of `clap_complete` completes options only, not positional arguments; veil adds the missing line to the script.
+
 ## [1.0.0-beta.2] - 2026-11-27
 
 ### Added
