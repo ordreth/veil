@@ -1,11 +1,11 @@
 [package]
 name = "veil"
-version = "1.0.0-beta.1"
+version = "1.0.0-beta.2-dev"
 edition = "2021"
 # The oldest Rust veil builds with: `notify-rust` 4.18 needs 1.89. CI checks
 # it (`nix develop .#msrv`, which reads this field).
 rust-version = "1.89"
-description = "Minimalist dynamic and static wallpaper daemon for Wayland/wlroots (Hyprland)"
+description = "A wallpaper daemon for Wayland compositors with layer-shell: pictures and looping videos on every monitor"
 license-file = "LICENSE"
 # Not published on crates.io (the name is taken there, and the license is not an
 # open-source one).

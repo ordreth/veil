@@ -2,7 +2,7 @@
 title: "Código de conduta"
 description: "A conduta de todos que participam das discussões do veil."
 group: "Project"
-order: 15
+order: 13
 source: "CODE_OF_CONDUCT.md"
 source_hash: "3c7242ef0805a20f41dd7ac366aca511cc9099e4d4a81ebb095cf9a1156e73e1"
 ---

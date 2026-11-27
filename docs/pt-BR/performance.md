@@ -4,10 +4,10 @@ description: "CPU, memória e taxa de quadros medidas por tipo de papel de pared
 group: "Reference"
 order: 6
 source: "README.md"
-source_hash: "5975e5f07fe4fc374c8f3b3a67e9ff1a73f895d7bd2f17ad007e2f368768d6fa"
+source_hash: "36d87c55219ac627439a8d69f360e8c3eb3552a6a35093ae5d3ebaf3753e61bb"
 ---
 
-Medido com [`scripts/bench/`](https://github.com/ordreth/veil/tree/main/scripts/bench) na compilação de 2026-10-19, em um sway 1.12 headless que renderiza na CPU, com uma saída de 1920x1080 em `fill`, 60 segundos após um aquecimento de 5 segundos, com `MALLOC_ARENA_MAX=1`, como o pacote e a unidade o iniciam. Os clipes são padrões de teste do ffmpeg em que todo quadro é diferente. A máquina: Intel Core i5-11400F, NVIDIA GeForce RTX 3060 Ti (driver 595.91.07, por isso o GStreamer escolhe os decodificadores `nvcodec`), 32 GB, NixOS com Linux 7.2 e GStreamer 1.28.7. A CPU é dada em porcentagem de um núcleo, para o processo inteiro do daemon.
+Medido com [`scripts/bench/`](https://github.com/ordreth/veil/tree/stable/scripts/bench) na compilação de 2026-10-19, em um sway 1.12 headless que renderiza na CPU, com uma saída de 1920x1080 em `fill`, 60 segundos após um aquecimento de 5 segundos, com `MALLOC_ARENA_MAX=1`, como o pacote e a unidade o iniciam. Os clipes são padrões de teste do ffmpeg em que todo quadro é diferente. A máquina: Intel Core i5-11400F, NVIDIA GeForce RTX 3060 Ti (driver 595.91.07, por isso o GStreamer escolhe os decodificadores `nvcodec`), 32 GB, NixOS com Linux 7.2 e GStreamer 1.28.7. A CPU é dada em porcentagem de um núcleo, para o processo inteiro do daemon.
 
 | Papel de parede | Decodificador | CPU | Quadros exibidos por segundo | Memória (RSS) | Threads |
 |---|---|---|---|---|---|

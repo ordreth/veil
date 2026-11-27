@@ -4,12 +4,12 @@ description: "Falhas comuns e suas mensagens, um guia rápido de depuração e a
 group: "Reference"
 order: 8
 source: "docs/troubleshooting.md"
-source_hash: "9b762c09566135e26cc308934ccac650c3826c3d26b03cbf99d888e7a41256c3"
+source_hash: "20cda5f9f2db90f07faedd8ea4b72a3692b862c64b255c140e91513c0f1c8b67"
 ---
 
 O que fazer quando o veil não mostra o que deveria: por onde começar, as falhas comuns o bastante para terem nome, um guia rápido dos comandos que dizem mais e uma tabela dos compositores e placas gráficas em que o veil foi testado.
 
-As falhas abaixo foram produzidas de propósito em um sway 1.12 headless com GStreamer 1.28.7, e as mensagens são as que o daemon deu (2026-10-19; como, em [`manual-tests.md`](https://github.com/ordreth/veil/blob/main/docs/manual-tests.md), "Troubleshooting"); a tabela de outras mensagens cita o código. As linhas de log são mostradas sem o timestamp. As limitações que o veil conhece e não consegue corrigir hoje, como a falha em uma mudança de monitor enquanto um vídeo é reproduzido, estão em [`known-issues.md`](/apps/veil/docs/known-issues).
+As falhas abaixo foram produzidas de propósito em um sway 1.12 headless com GStreamer 1.28.7, e as mensagens são as que o daemon deu (2026-10-19, à mão; um teste que as produza ainda está por escrever, [`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md)); a tabela de outras mensagens cita o código. As linhas de log são mostradas sem o timestamp. As limitações que o veil conhece e não consegue corrigir hoje estão em [`known-issues.md`](/apps/veil/docs/known-issues).
 
 ## Por onde começar
 
@@ -51,7 +51,7 @@ As falhas abaixo foram produzidas de propósito em um sway 1.12 headless com GSt
 | `stopped while the compositor does not show it` | Ninguém está vendo o vídeo agora. | Nada: ele volta a ser reproduzido quando a saída for desenhada de novo. `--release-unseen-after 0` desativa isso. |
 | `showing` ou `playing`, e as contagens de quadros sobem, mas outra coisa está na tela | Outro programa desenha na mesma camada: outro daemon de papel de parede (`swaybg`, `hyprpaper`, `swww`, `mpvpaper`, ...). No sway, o iniciado por último fica por cima, e um `veil set` posterior não muda isso (visto com o `swaybg` 1.2.2). | Parar o outro programa, ou removê-lo da configuração do compositor (o sway inicia o `swaybg` para uma linha `output * bg ...`). |
 
-**Para desenvolvedores: um vídeo precisa de um buffer sob ele.** O `waylandsink` desenha o vídeo em uma subsuperfície da superfície do veil, e uma subsuperfície só é exibida quando sua superfície pai está mapeada, isto é, tem um buffer anexado e confirmado por commit. O veil põe a cor de fundo do vídeo sob todo vídeo (`RenderTarget::fill`). Uma compilação que deixa o buffer de fora mostra o fundo do compositor onde o vídeo deveria estar: testado com as três chamadas de `fill` de `engine/video.rs` removidas, a tela mostrou a própria cor de fundo do sway, nada se mexeu, o sink contou todo quadro como descartado, e dois segundos depois `veil status` disse `stopped while the compositor does not show it`.
+**Para desenvolvedores: um vídeo precisa de um buffer sob ele.** O veil mostra um vídeo em uma subsuperfície da sua superfície (`wayland::plane`), e uma subsuperfície só é exibida quando sua superfície pai está mapeada, isto é, tem um buffer anexado e confirmado por commit. O veil põe a cor de fundo do vídeo sob todo vídeo (`RenderTarget::fill`). Uma compilação que deixa o buffer de fora mostra o fundo do compositor onde o vídeo deveria estar: testado com as três chamadas de `fill` de `engine/video.rs` removidas, a tela mostrou a própria cor de fundo do sway, nada se mexeu, o sink contou todo quadro como descartado, e dois segundos depois `veil status` disse `stopped while the compositor does not show it`.
 
 ## Um vídeo não é reproduzido: falta um elemento do GStreamer
 
@@ -59,9 +59,7 @@ O veil monta todo pipeline de vídeo com elementos do GStreamer encontrados em t
 
 | O log ou o `veil set` diz | Ausente | No conjunto de plugins |
 |---|---|---|
-| `Internal GLib/GStreamer error: no element "waylandsink"` | o sink de vídeo | `gst-plugins-bad` |
-| `Internal GLib/GStreamer error: no element "videoconvert"` | o conversor | `gst-plugins-base` (ou [um registro desatualizado](#um-registro-do-gstreamer-desatualizado), ou [plugins de outro GStreamer](#plugins-de-outra-versão-do-gstreamer)) |
-| `Internal GLib/GStreamer error: no element "videocrop"` | o recorte do `fill` | `gst-plugins-good` |
+| `Failed to construct GStreamer element: Failed to find element factory with name 'playbin' for creating element` | o player | `gst-plugins-base` (ou [um registro desatualizado](#um-registro-do-gstreamer-desatualizado), ou [plugins de outro GStreamer](#plugins-de-outra-versão-do-gstreamer)) |
 | `GStreamer pipeline error: the video cannot be played: Your GStreamer installation is missing a plug-in.`, após um aviso `No decoder available for type 'video/webm'` | um demuxer ou um decodificador para este arquivo | veja abaixo |
 
 O tipo no aviso diz qual: `video/webm` e `video/x-matroska` precisam do `matroskademux`, `video/quicktime` (MP4, MOV) do `qtdemux`, ambos do `gst-plugins-good`; VP8 e VP9 são decodificados pelo `gst-plugins-good` (`vp8dec`, `vp9dec`), H.264 e HEVC por software pelo `gst-libav` (`avdec_h264`, `avdec_h265`); `image/gif` (um GIF animado) precisa do `gst-libav` (`avdemux_gif`, `avdec_gif`). Os decodificadores por hardware vêm do `gst-plugins-bad` (`va`, `nvcodec`) e precisam de um driver (veja [Sem decodificação por hardware](#sem-decodificação-por-hardware)). Os nomes dos pacotes no Arch, Debian, Ubuntu e Fedora estão no README ([A partir do código-fonte](/apps/veil/docs/install#a-partir-do-código-fonte)); o `gst-libav` do próprio Fedora não tem decodificador H.264 nem HEVC (o `openh264dec` decodifica H.264 lá).
@@ -69,15 +67,15 @@ O tipo no aviso diz qual: `video/webm` e `video/x-matroska` precisam do `matrosk
 O que acontece então:
 
 * `veil set --input FILE`: ele imprime o erro e termina com código de saída 1; o papel de parede na tela permanece.
-* `veil daemon --input FILE`: a falta do `waylandsink`, do `videoconvert` ou do `videocrop` para o daemon (código de saída 1, com uma notificação de desktop). A falta de um demuxer ou de um decodificador não: o daemon roda, a saída mostra a cor de fundo e `veil status` diz `stopped after an error`.
-* As imagens não passam pelo GStreamer: um daemon sem o `gst-plugins-bad` exibiu uma imagem normalmente.
+* `veil daemon --input FILE`: a falta do `playbin` para o daemon (código de saída 1, com uma notificação de desktop). A falta de um demuxer ou de um decodificador não: o daemon roda, a saída mostra a cor de fundo e `veil status` diz `stopped after an error`.
+* As imagens não passam pelo GStreamer: um daemon sem o `gst-plugins-bad` exibiu uma imagem normalmente. Os vídeos precisam do `gst-plugins-bad` só para os decodificadores por hardware; o sink de vídeo e o conversor do veil são dele mesmo e do `gst-plugins-base`.
 
 **Com o pacote Nix**, tudo isso já vem nele (`base`, `good`, `bad`, `libav`; a verificação `plugins` do pacote procura todo elemento que o veil usa). Um elemento ausente ali significa um registro desatualizado ou plugins de outro GStreamer em `GST_PLUGIN_PATH` (as duas próximas seções).
 
 **Em outras distribuições**, instale os conjuntos de plugins. Os pacotes costumam ter o nome deles: `gst-plugins-bad` (Arch), `gstreamer1.0-plugins-bad` (Debian, Ubuntu), `gstreamer1-plugins-bad-free` (Fedora), e o mesmo para `base`, `good` e `libav` (não verificado nessas distribuições). Verifique com a ferramenta do próprio GStreamer, que enxerga os mesmos plugins que o veil:
 
 ```bash
-gst-inspect-1.0 waylandsink videoconvert videocrop > /dev/null && echo "all there"
+gst-inspect-1.0 playbin matroskademux qtdemux > /dev/null && echo "all there"
 gst-inspect-1.0 --exists avdec_h264 || echo "no software H.264 decoder"
 ```
 
@@ -98,7 +96,7 @@ veil set --input anim.webm
 
 O GStreamer mantém um cache dos plugins que encontrou, o *registro*. Um plugin que falhou ao carregar uma vez é registrado como falho e deixado de fora enquanto seu arquivo mantiver o caminho, a data de modificação e o tamanho, mesmo que o motivo tenha desaparecido. No Nix store os arquivos nunca mudam, então ele fica de fora para sempre. Como o `nvcodec` não declara dependência do driver, o mesmo vale para os decodificadores da NVIDIA: um registro escrito quando o driver não podia ser alcançado os mantém de fora depois que o driver volta a funcionar (testado: escrito com `CUDA_VISIBLE_DEVICES=` definido, a próxima inicialização sem ele ainda decodificou por software). O plugin `va` é examinado de novo quando os dispositivos de renderização, o `LIBVA_DRIVER_NAME` ou o diretório de drivers mudam.
 
-**Sintomas:** `no element "videoconvert"` (ou outro elemento) embora os plugins estejam instalados; um decodificador por hardware que o GStreamer usava antes não é mais usado.
+**Sintomas:** `Failed to find element factory with name 'playbin'` (ou outro elemento) embora os plugins estejam instalados; um decodificador por hardware que o GStreamer usava antes não é mais usado.
 
 **Correção:** apagar o registro; a próxima inicialização escreve um novo (essa inicialização demora um ou dois segundos a mais).
 
@@ -109,7 +107,7 @@ rm ~/.cache/gstreamer-1.0/registry.*.bin         # GStreamer's shared one: every
 
 `GST_REGISTRY` (ou `GST_REGISTRY_1_0`), se definido, nomeia o arquivo em seu lugar. Para ver o que o registro deixou de fora, pergunte ao `gst-inspect-1.0` com o mesmo ambiente: `gst-inspect-1.0 -b` lista os plugins que ele pôs na lista negra. O pacote Nix mantém um registro próprio por esse motivo: o compartilhado é reescrito por todo programa GStreamer com seus próprios plugins (ele uma vez perdeu os plugins base na máquina do desenvolvedor, 2026-10-15).
 
-Reproduzido: uma cópia de `libgstvideoconvertscale.so` danificada sem mudar seu tamanho nem seu timestamp fez o daemon falhar com `no element "videoconvert"` (o log tinha `Failed to load plugin ...: invalid ELF header`); reparada byte a byte, ele ainda falhava, e `gst-inspect-1.0 -b` a listava; com o registro apagado, o vídeo foi reproduzido.
+Reproduzido por um teste (`a_stale_registry_keeps_a_plugin_out_until_it_is_deleted` em `tests/headless.rs`): com uma cópia do `gst-plugins-base` cujo `libgstplayback.so` está danificado sem mudar seu tamanho nem seu timestamp, `veil set` de um vídeo falha com `Failed to find element factory with name 'playbin'`; reparado byte a byte, ainda falha; com o registro apagado, o vídeo é reproduzido.
 
 ## Plugins de outra versão do GStreamer
 
@@ -134,7 +132,9 @@ Um vídeo decodificado por software ainda é reproduzido; ele custa mais CPU. O 
 * **Nix em outra distribuição:** as bibliotecas compiladas pelo Nix procuram drivers em `/run/opengl-driver` e nos diretórios usuais do sistema, mas um driver compilado para a distribuição pode não carregar neles. Não testado.
 * **Um registro escrito sem o driver** mantém os decodificadores da NVIDIA de fora ([Um registro do GStreamer desatualizado](#um-registro-do-gstreamer-desatualizado)).
 
-A decodificação por hardware não torna um vídeo gratuito: na NVIDIA, todo quadro ainda é convertido para RGB na CPU (cerca de 18 % de um núcleo para 1080p a 30 fps). Em Intel e AMD, os quadros podem ir ao compositor sem isso (como dmabufs), o que não foi verificado ([`known-issues.md`](/apps/veil/docs/known-issues), entrada 7).
+A decodificação por hardware não torna um vídeo gratuito: na NVIDIA, todo quadro ainda é convertido para RGB na CPU (cerca de 18 % de um núcleo para 1080p a 30 fps). Em Intel e AMD, os quadros dos decodificadores VA-API vão para o compositor como estão, em dmabufs, quando o compositor os aceita e pode ser informado de como as cores deles estão codificadas; então um vídeo custa alguns por cento de um núcleo. O log diz por qual caminho um vídeo vai: `video frames go to the compositor as they are, in dmabufs (...)`, `video frames are converted on the CPU, from ...` ou `the compositor cannot be told how the video's colours are coded (...); converting its frames on the CPU`. `compositor takes dmabufs in no YUV format`, no início, significa que o compositor não lista nenhum formato que os quadros de um decodificador possam ter (Hyprland até a 0.57): ali todo vídeo é convertido na CPU ([`known-issues.md`](/apps/veil/docs/known-issues), entrada 7).
+
+**Um notebook com uma GPU Intel e uma NVIDIA:** o GStreamer prefere os decodificadores da NVIDIA (o `nvh264dec` e os outros têm rank mais alto), e os quadros deles são convertidos na CPU. Se o compositor roda na GPU Intel, os decodificadores da Intel são a escolha mais barata; retire os da NVIDIA como abaixo: `GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvav1dec:0,nvvp9dec:0`.
 
 ### Forçar a decodificação por software
 
@@ -148,13 +148,7 @@ GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvvp9dec:0,nvav1dec:0 veil daemo
 
 Medido: com `nvh264dec:0` (ou `nvh264dec:NONE`), o clipe H.264 foi decodificado pelo `avdec_h264 (software)`; com `nvvp9dec:0`, o clipe VP9 pelo `vp9dec (software)`. Sob o systemd, `systemctl --user edit veil` e acrescente `Environment=GST_PLUGIN_FEATURE_RANK=nvh264dec:0` em `[Service]`. A variável é lida quando o daemon inicia; ela não altera o registro. (Uma opção de decodificador própria do veil está planejada para depois da 1.0; veja [`roadmap.md`](/apps/veil/docs/roadmap).)
 
-## Um vídeo abre em uma janela própria
 
-**Sintoma:** uma janela normal (no sway: em mosaico, com barra de título, seu `app_id` o nome do programa) reproduz o vídeo, e o próprio papel de parede mostra apenas sua cor de fundo.
-
-**Causa:** o `waylandsink` não recebeu a conexão Wayland do veil, então abriu a sua e criou uma janela ali. O veil entrega a conexão a ele em um contexto do GStreamer do tipo `GstWaylandDisplayHandleContextType` (`engine::video::display_context`), com o ponteiro do display no campo `handle`. O GStreamer 1.28.7 lê primeiro o campo `display` e depois `handle` "for backward compatibility" (`gst-libs/gst/wayland/gstwlcontext.c`); em um teste os dois nomes funcionaram, e um campo com outro nome produziu exatamente esta janela. O veil mantém `handle`, o campo que o GStreamer continua lendo por compatibilidade (qual campo as versões anteriores à 1.28 liam não foi verificado).
-
-Isso não acontece com o veil como é lançado. Se isso aparecer, relate com a versão do GStreamer (a primeira linha do log) e um log com `GST_DEBUG=waylandsink:5`.
 
 ## Um nome de saída não é encontrado
 
@@ -173,11 +167,10 @@ Uma saída que não tem nome (raro: um compositor que não envia `wl_output.name
 
 | Mensagem | Significado |
 |---|---|
-| `GStreamer-Wayland-WARNING **: Could not bind to zwp_linux_dmabuf_v1` | O compositor não oferece dmabufs (um sway headless que renderiza na CPU, por exemplo). Os quadros passam pela memória compartilhada; nada mais muda. |
 | `XDG_RUNTIME_DIR is not set to an absolute path; veil keeps its control socket there` | Não é uma sessão de desktop normal. Inicie o veil a partir da sessão (ou do gerenciador de usuário do systemd). |
 | `veil daemon` termina com código de saída 4 | Já roda um daemon para este compositor. `veil quit` o encerra. |
 | `Lost the connection to the Wayland compositor`, código de saída 5 | O compositor terminou ou falhou. O veil não reconecta; a próxima sessão o inicia de novo. |
-| O daemon morre com SIGSEGV (código de saída 139) quando um monitor é alterado, conectado ou ligado enquanto um vídeo é reproduzido | Problema conhecido 1, um bug do `waylandsink` do GStreamer. Rode o veil sob sua unidade do systemd: ele volta em cerca de três segundos com seus papéis de parede. |
+| O daemon morre com SIGSEGV (código de saída 139) quando um monitor é alterado, conectado ou ligado enquanto um vídeo é reproduzido | Problema conhecido 1, corrigido depois da 1.0.0-beta.1 (o veil não usa mais o `waylandsink` do GStreamer). Com a 1.0.0-beta.1, rode o veil sob sua unidade do systemd: ele volta em cerca de três segundos com seus papéis de parede. |
 | Um erro no arquivo de configuração, código de saída 2 | A mensagem traz o arquivo, a linha e a coluna. `veil config check` diz o mesmo sem um daemon. |
 
 ## Guia rápido de depuração
@@ -191,54 +184,54 @@ Uma saída que não tem nome (raro: um compositor que não envia `wl_output.name
 | O log sob o systemd | `journalctl --user -u veil -f` |
 | Mais do veil: cada carregamento, troca, pausa e o que o compositor informa | `RUST_LOG=veil=debug veil daemon` |
 | Tudo, inclusive as bibliotecas que o veil usa | `RUST_LOG=debug veil daemon` |
-| O sink de vídeo: buffers, a janela, o retângulo de renderização | `GST_DEBUG=waylandsink:5 veil daemon` |
+| O sink de vídeo: o layout, e para o que cada quadro é convertido (`video converter: 3840x2160 Nv12, crop ..., to 1920x1080 XRGB8888`) | `RUST_LOG=veil::engine::video=debug veil daemon` |
 | De qual arquivo cada plugin do GStreamer é carregado, e quais falham | `GST_DEBUG=GST_PLUGIN_LOADING:4 veil daemon` |
-| Se o `videocrop` recorta sem cópia (`in-place transform using crop meta`) | `GST_DEBUG=videocrop:5 veil daemon --mode fill` |
 | Um log do GStreamer em um arquivo próprio | `GST_DEBUG_FILE=/tmp/gst.log` com qualquer uma das linhas `GST_DEBUG` |
-| Toda requisição e evento do Wayland (as linhas `{GStreamer display queue}` são do sink de vídeo) | `WAYLAND_DEBUG=1 veil daemon` |
+| Toda requisição e evento do Wayland (os de um vídeo estão em uma `wl_surface` criada com `wl_subcompositor.get_subsurface`) | `WAYLAND_DEBUG=1 veil daemon` |
 | Retirar um decodificador por hardware | `GST_PLUGIN_FEATURE_RANK=nvh264dec:0 veil daemon` |
 | Um registro novo do GStreamer, para descartar um desatualizado | `GST_REGISTRY=/tmp/veil-registry.bin veil daemon` |
 | Sob o systemd | `systemctl --user edit veil`, depois `Environment=RUST_LOG=veil=debug` (ou qualquer variável acima) em `[Service]`, e `systemctl --user restart veil` |
 
 ## Relatar um problema
 
-Os relatos vão para o [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports) (o veil não aceita issues nem pull requests; nada é prometido em troca). Um relato é mais útil com a primeira linha do log (as versões do veil e do GStreamer), `veil status`, o compositor e sua versão, a placa gráfica e seu driver, e a linha `video decoder:` para um vídeo. Diga o que você fez, o que esperava e o que aconteceu. Um problema de segurança não é relatado ali: veja [`SECURITY.md`](/apps/veil/docs/security).
+Os relatos vão para o [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports) (o veil não aceita issues nem pull requests; nada é prometido em troca). Um relato é mais útil com a primeira linha do log (as versões do veil e do GStreamer; para uma versão terminada em `-dev`, também o commit que você compilou: `git rev-parse --short HEAD`, ou o `rev` do veil no seu `flake.lock`), como você o instalou, `veil status`, o compositor e sua versão, a placa gráfica e seu driver, e a linha `video decoder:` para um vídeo. Diga o que você fez, o que esperava e o que aconteceu. Um problema de segurança não é relatado ali: veja [`SECURITY.md`](/apps/veil/security).
 
 ## Matriz de suporte
 
-O que foi executado, onde e por quem. Os rótulos: **Verificado** (executado e conferido pelo projeto), **Relatado como funcionando** (executado uma vez, pelas ferramentas do projeto ou por um usuário, ainda não conferido de novo), **Não testado**, **Não suportado**. Os detalhes de cada linha estão na [tabela de compatibilidade](#compatibilidade) abaixo, que é a fonte desta.
+Em que o veil é testado, e em que ele já foi visto funcionando. Os rótulos: **Testado** (testes automatizados o cobrem, no CI salvo indicação em contrário: [`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md)), **Relatado como funcionando** (visto funcionando, no nosso uso diário, em uma execução feita uma vez ou no relato de um usuário, mas nenhum teste o cobre), **Não testado**, **Não suportado**. Os detalhes de cada linha estão na [tabela de compatibilidade](#compatibilidade) abaixo.
 
 | | Status | O quê, quando |
 |---|---|---|
 | **Compositores** | | |
-| sway (headless, 1.12) | Verificado | Toda verificação de `tests/headless.rs` e as medições; 2026-10-19. |
-| Hyprland 0.56.2 | Relatado como funcionando | Imagens, vídeo H.264 em dois monitores e a pausa automática, 2026-10-20. Fluidez, bloqueio, DPMS, logout e recuperação de falhas estão **Não testados**. |
+| sway (headless, 1.12) | Testado | Todo teste de `tests/headless.rs` e os testes curtos de longa duração, no CI; as medições. |
+| Hyprland 0.56.2 e 0.57.2 | Relatado como funcionando | Nosso papel de parede diário. O backend dele é testado contra um Hyprland falso (`tests/compositor.rs`, `tests/headless.rs`), a renderização não: fluidez, bloqueio, DPMS e logout não são cobertos por testes. |
 | river, niri, Wayfire, labwc, outros compositores com `wlr-layer-shell` | Não testado | Deveriam funcionar. Sem pausa automática (todo vídeo conta como visível), apenas a liberação de um vídeo que ninguém está vendo. |
 | KDE Plasma (KWin) | Não testado | Tem `wlr-layer-shell`; ninguém tentou. |
 | GNOME (Mutter) | Não suportado | Sem `wlr-layer-shell`. |
 | **Gráficos** | | |
-| NVIDIA (NVDEC) | Relatado como funcionando | RTX 3060 Ti, driver 595.91.07, sway e Hyprland. Todo quadro de vídeo é convertido na CPU ([problema conhecido 7](/apps/veil/docs/known-issues)). |
-| Intel, AMD (VA-API) | Não testado | O caminho sem cópia não foi verificado em nenhum hardware. |
-| Decodificação por software | Relatado como funcionando | Nos testes e retirando os decodificadores por hardware ([solução de problemas](#sem-decodificação-por-hardware)). |
+| NVIDIA (NVDEC) | Relatado como funcionando | RTX 3060 Ti, driver 595.91.07, sway e Hyprland. Todo quadro de vídeo é convertido na CPU ([problema conhecido 7](/apps/veil/docs/known-issues)). O CI não tem GPU. |
+| Intel (VA-API) | Testado (fora do CI) | Raptor Lake, Mesa 26.3: quadros em dmabufs e suas cores em um sway headless com `vulkan` e `gles2` (`tests/gpu.rs`, executado onde a GPU está; com bench, [`measurements.md`](/apps/veil/docs/measurements)). O Hyprland 0.57.2 (relatado como funcionando) não aceita dmabufs YUV, então lá os vídeos são convertidos na CPU ([problema conhecido 7](/apps/veil/docs/known-issues)). |
+| AMD (VA-API) | Não testado | Deveria seguir o mesmo caminho que a Intel. |
+| Decodificação por software | Testado | Os testes headless no CI (sem GPU ali), e retirando os decodificadores por hardware ([solução de problemas](#sem-decodificação-por-hardware)). |
 | **Arquiteturas** | | |
-| x86_64 | Relatado como funcionando | O tarball em um contêiner de seis distribuições, 2026-10-19. |
+| x86_64 | Testado | CI. |
 | aarch64 | Não testado | O workflow de lançamento o compila e roda os testes lá; ele nunca foi executado com um compositor. |
-| **Distribuições** (o tarball pré-compilado, em um sway headless) | | |
-| Debian 12 e 13, Ubuntu 22.04 e 24.04, Fedora 44, Arch Linux | Relatado como funcionando | 2026-10-19. GIFs animados exigem o GStreamer 1.26 ou mais recente, e o Ubuntu 24.04 perde quadros de vídeos de 1080p ([problema conhecido 8](/apps/veil/docs/known-issues)). |
-| NixOS (o flake) | Verificado | `nix run` e `nix profile add`, com sway e Hyprland: imagens, vídeo e um daemon encerrado com `SIGKILL` substituído pelo seguinte. 2026-10-20 e 2026-11-04. O overlay com `systemd.packages` do [README](/apps/veil/docs/install) não foi executado nele. |
-
-O que um usuário deve saber antes de usar o veil com vários monitores e um vídeo: um monitor que é alterado, conectado ou ligado enquanto um vídeo é reproduzido derruba o daemon ([problema conhecido 1](/apps/veil/docs/known-issues)); sob a unidade do systemd, ele volta em segundos.
+| **Distribuições** | | |
+| Debian 12 | Testado | O CI compila o binário de lançamento contra o GStreamer dele e roda os testes ali (sem compositor). |
+| Debian 12 e 13, Ubuntu 22.04 e 24.04, Fedora 44, Arch Linux (o tarball pré-compilado, em um sway headless) | Relatado como funcionando | Executado uma vez, 2026-10-19. GIFs animados exigem o GStreamer 1.26 ou mais recente, e o Ubuntu 24.04 perde quadros de vídeos de 1080p ([problema conhecido 8](/apps/veil/docs/known-issues)). |
+| NixOS (o flake) | Testado | `nix flake check` no CI: o pacote, seus plugins, o autocompletar e as páginas de manual. Nosso sistema diário, com `nix run` e `nix profile add` vistos funcionando (2026-10-20, 2026-11-04). |
 
 ## Compatibilidade
 
-Em que o veil foi executado e o que funcionou. **Testadores: relatem uma linha** no [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports): o compositor e sua versão, a placa gráfica e o driver, as versões do veil e do GStreamer (a primeira linha do log) e, para cada coluna, se funcionou, com o que foi tentado. "Ainda não" significa que ninguém relatou, não que falha.
+Em que o veil foi executado e o que funcionou: a fonte do "Relatado como funcionando" da matriz de suporte. **Relate uma linha** no [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports): o compositor e sua versão, a placa gráfica e o driver, as versões do veil e do GStreamer (a primeira linha do log) e, para cada coluna, se funcionou, com o que foi tentado. "Ainda não" significa que ninguém relatou, não que falha.
 
 | Compositor | GPU, driver | Imagens | Vídeo | Decodificador (do log) | Pausa automática | Observações | Verificado em |
 |---|---|---|---|---|---|---|---|
-| sway 1.12, headless, renderização na CPU (`pixman`) | NVIDIA RTX 3060 Ti, 595.91.07 | sim | sim: H.264, HEVC, VP8, VP9, AV1 | `nvh264dec`, `nvh265dec`, `nvav1dec`, `nvvp8dec`, `nvvp9dec` (hardware); os de software quando os de hardware são retirados | sim (IPC do sway) | Onde rodam todas as verificações de `tests/headless.rs` e as medições. Problema conhecido 1: uma mudança de monitor enquanto um vídeo é reproduzido mata o daemon. Os quadros são convertidos na CPU (problema conhecido 7). | veil 0.1.0, GStreamer 1.28.7, 2026-10-19 |
+| sway 1.12, headless, renderização na CPU (`pixman`) | NVIDIA RTX 3060 Ti, 595.91.07 | sim | sim: H.264, HEVC, VP8, VP9, AV1 | `nvh264dec`, `nvh265dec`, `nvav1dec`, `nvvp8dec`, `nvvp9dec` (hardware); os de software quando os de hardware são retirados | sim (IPC do sway) | Onde rodam todas as verificações de `tests/headless.rs` e as medições. Problema conhecido 1: uma mudança de monitor enquanto um vídeo é reproduzido matava o daemon (corrigido desde 2026-11-09). Os quadros são convertidos na CPU (problema conhecido 7). | veil 0.1.0, GStreamer 1.28.7, 2026-10-19 |
 | sway 1.12, headless, renderização na GPU (`gles2`) | NVIDIA RTX 3060 Ti, 595.91.07 | ainda não | ainda não | | ainda não | O pipeline de sink do veil foi executado aqui com `gst-launch-1.0` (o veil em si não foi executado): o sway oferece dmabufs e só aceita os NV12 com os modificadores tiled da NVIDIA. | |
 | Hyprland 0.56.2 | NVIDIA RTX 3060 Ti (a máquina da primeira linha) | sim (como papel de parede diário, pela unidade do systemd) | sim: H.264 1080p60 em dois monitores 1080p ao mesmo tempo | `nvh264dec` (hardware) | sim: uma janela em tela cheia pausou sua saída ("cannot be seen; pausing it"), e fechá-la voltou a reproduzir; a outra saída continuou reproduzindo | Cerca de 90 a 99 % de um núcleo para dois streams 1080p60 (problema conhecido 7), cerca de 41 % com uma saída pausada. Fluidez sem atraso (problema conhecido 6), bloqueio, DPMS, logout, recuperação de falhas e uma mudança de monitor não foram verificados no Hyprland. O estado que o veil lê do seu IPC coincide com `hyprctl monitors`. | veil 0.1.0 (uma compilação de lançamento da árvore), GStreamer 1.28.7, 2026-10-20 |
+| sway 1.12, headless, renderização na GPU (`gles2` e `vulkan`) | Intel Raptor Lake (i7-13620H), Mesa 26.3 | ainda não | sim: H.264, HEVC, VP9, AV1 | `vah264dec`, `vah265dec`, `vavp9dec`, `vaav1dec` (hardware; decodificadores da NVIDIA retirados) | sim (IPC do sway) | Quadros em dmabufs, nada convertido na CPU (problema conhecido 7): com `vulkan`, todo vídeo; com `gles2`, que não pode ser informado da codificação de cores de um vídeo, só os BT.601. | veil 1.0.0-beta.1 e o caminho dmabuf, GStreamer 1.28.8, 2026-11-20 |
 | sway, em hardware | qualquer | ainda não | ainda não | | | | |
-| Hyprland | Intel ou AMD (VA-API) | ainda não | ainda não | | | Mostraria se o caminho sem cópia funciona (problema conhecido 7, opção A). | |
+| Hyprland 0.57.2 | Intel Raptor Lake (i7-13620H; o notebook também tem uma GPU NVIDIA, o Hyprland renderiza na Intel) | ainda não | sim: H.264 1080p30, clipes de teste BT.709 e BT.601 | `vah264dec` (hardware; decodificadores da NVIDIA retirados) | sim, a partir da correção para o Hyprland 0.57 (antes dela, o veil não conseguia ler os monitores: `j/monitors: missing field 'id'`): uma janela em tela cheia pausou o vídeo (`paused (hidden by a window)`), sair da tela cheia o reproduziu de novo | Ainda sem caminho dmabuf: o Hyprland tem `zwp_linux_dmabuf_v1` versão 5 (120 formatos), mas não `wp_color_representation_v1`, e até o clipe BT.601 foi convertido na CPU (cerca de 45 % de um núcleo, como antes): os dmabufs do decodificador não foram negociados porque o Hyprland 0.57 não lista nenhum formato YUV no `zwp_linux_dmabuf_v1` (o renderizador dele os deixa de fora; o branch principal do Hyprland os lista, problema conhecido 7). As cores pareciam corretas. | veil 1.0.0-beta.1 e o caminho dmabuf, GStreamer 1.28.7, 2026-11-20 |
 | river, niri, Wayfire, labwc, KDE Plasma (wlr-layer-shell) | qualquer | ainda não | ainda não | | não (pausa apenas atrás de uma tela bloqueada ou de um monitor desligado) | Deveria funcionar: o veil precisa de `wlr-layer-shell`; `wp_viewporter` e `wp_fractional_scale_v1` são usados quando estão presentes. | |
 | GNOME (Mutter) | qualquer | não | não | | | Não tem `wlr-layer-shell`, que o veil exige. | |

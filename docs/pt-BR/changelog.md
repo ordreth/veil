@@ -4,7 +4,7 @@ description: "O que muda para os usuários, lançamento a lançamento."
 group: "Project"
 order: 11
 source: "CHANGELOG.md"
-source_hash: "50b66d57cef5dd7589c7017a8075b5ea9d931762f8b9fbcbc863f0cd4e82520e"
+source_hash: "659a87d42b909df606804da78d6deeeb879986bd78deec107c74f546baee1a96"
 ---
 
 Toda mudança que um usuário do veil pode perceber é registrada aqui. O formato segue o [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), e o veil usa o [versionamento semântico](https://semver.org/spec/v2.0.0.html) a partir da 1.0. O que conta como interface do veil para o número da versão: a linha de comando (comandos, flags, valores, o que o `--json` imprime), os códigos de saída, o protocolo do socket de controle ([`docs/ipc.md`](/apps/veil/docs/ipc)), as chaves do arquivo de configuração ([`docs/configuration.md`](/apps/veil/docs/configuration)) e o arquivo de estado.
@@ -12,6 +12,26 @@ Toda mudança que um usuário do veil pode perceber é registrada aqui. O format
 O veil 1.0.0-beta.1 é o primeiro lançamento, um beta. Tudo o que está abaixo faz parte dele. As limitações conhecidas e deixadas em aberto de propósito estão em [`docs/known-issues.md`](/apps/veil/docs/known-issues); as mais importantes são listadas ao fim da seção.
 
 ## [Não lançado]
+
+### Adicionado
+
+- Uma política de privacidade, [`PRIVACY.md`](/apps/veil/privacy): o que o veil lê e escreve no seu computador, e que nada sai dele. Os tarballs de lançamento agora a trazem, e o `SECURITY.md` também.
+- O README diz como atualizar o veil para cada forma de instalá-lo.
+
+### Corrigido
+
+- Um monitor alterado (escala, modo, posição), conectado, desconectado, ligado ou despertado do DPMS enquanto um vídeo é reproduzido não derruba mais o daemon (problema conhecido 1). A falha estava no `waylandsink` do GStreamer, que o veil não usa mais.
+- Um vídeo que foi interrompido porque ninguém o via (uma sessão bloqueada, um monitor desligado) não mostra mais só a cor de fundo quando volta a ser visto: seu último quadro fica na tela até que o vídeo, iniciado de novo, tenha seu primeiro quadro.
+- No Hyprland 0.57, o veil volta a ler os monitores (`cannot read the answer to j/monitors: missing field 'id'`), então um vídeo também pausa lá sob uma janela em tela cheia ou que o cubra. O Hyprland 0.57 omite o id do workspace especial de um monitor quando nenhum é exibido.
+- Vídeos decodificados por um decodificador VA-API (Intel, AMD) e convertidos na CPU não parecem mais desbotados (problema conhecido 9): o decodificador não informa a faixa de cores do vídeo, e o conversor do GStreamer a tomava pela completa. O veil agora toma uma faixa desconhecida pela limitada, a do vídeo, como já fazia com quadros em dmabufs. No Hyprland até a 0.57, isso vale para todo vídeo em Intel e AMD.
+
+### Alterado
+
+- Lançamentos e `main` são separados. O branch `stable` é o lançamento mais recente, e as instruções do README para o Nix e para compilar a partir do código-fonte agora o usam (`github:ordreth/veil/stable`); o `main` é o trabalho rumo ao próximo lançamento, e sua versão termina em `-dev` (`1.0.0-beta.2-dev`). Uma entrada de flake em `github:ordreth/veil` continua seguindo o `main`.
+- Os vídeos são exibidos pelo sink de vídeo próprio do veil, em uma subsuperfície própria do veil, em vez do `waylandsink` do GStreamer. Cada quadro é convertido e recortado em uma única passada direto na memória que o compositor lê (o que `fill` e `center` cortam não é convertido), e o compositor o escala, como antes. O laço de eventos do daemon acorda cerca de metade das vezes enquanto um vídeo é reproduzido (34 em vez de 85 vezes por segundo a 30 fps); a CPU que um vídeo custa é a mesma. Em um compositor que retém o quadro que exibe (um sway headless), um vídeo 4K ocupa cerca de 100 MB a mais de memória do que antes: três buffers de 33 MB.
+- Os vídeos precisam do `gst-plugins-bad` só para os decodificadores por hardware; `waylandsink`, `videoconvert` e `videocrop` não são mais usados.
+- Um vídeo cujo monitor some por um momento (desconectado, desativado, um link que cai) continua de onde estava quando o monitor volta, em vez de recomeçar do início: seu pipeline é mantido, pausado, pelo tempo que `--release-unseen-after` mantém um vídeo não visto (2 s por padrão; com `0`, até o monitor voltar). Um monitor que fica fora por mais tempo recebe o vídeo do início, como antes.
+- Um vídeo decodificado por um decodificador VA-API (Intel, AMD) vai para o compositor como está, nos dmabufs do decodificador, quando o compositor aceita o formato deles (`zwp_linux_dmabuf_v1`) e pode ser informado de como as cores do vídeo estão codificadas (`wp_color_representation_v1`; sem ele, só para vídeos codificados como BT.601): nada é convertido nem copiado na CPU, e o compositor recorta e escala os quadros. Em um notebook Intel (Raptor Lake) com um sway headless renderizando na GPU, H.264 em 1080p30 custa cerca de 3 % de um núcleo em vez de 45 %, e 4K a 60 fps é reproduzido por inteiro em vez de perder um terço dos quadros. Outros decodificadores (os da NVIDIA) e compositores que não aceitam os quadros são convertidos na CPU, como antes; o log diz por qual caminho um vídeo vai, e diz no início quando o compositor não aceita nenhum dmabuf YUV (Hyprland até a 0.57: todos os seus vídeos são convertidos na CPU).
 
 ## [1.0.0-beta.1] - 2026-10-20
 

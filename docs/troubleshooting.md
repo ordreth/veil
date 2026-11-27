@@ -185,17 +185,17 @@ An output that has no name (rare: a compositor that does not send `wl_output.nam
 
 ## Reporting a problem
 
-Reports go to [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports) (veil takes no issues or pull requests; nothing is promised in return). A report is most useful with the first line of the log (veil's and GStreamer's versions), `veil status`, the compositor and its version, the graphics card and its driver, and the `video decoder:` line for a video. Say what you did and what you expected, and what happened. A security problem is not reported there: see [`SECURITY.md`](../SECURITY.md).
+Reports go to [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports) (veil takes no issues or pull requests; nothing is promised in return). A report is most useful with the first line of the log (veil's and GStreamer's versions; for a version that ends in `-dev`, also the commit you built: `git rev-parse --short HEAD`, or veil's `rev` in your `flake.lock`), how you installed it, `veil status`, the compositor and its version, the graphics card and its driver, and the `video decoder:` line for a video. Say what you did and what you expected, and what happened. A security problem is not reported there: see [`SECURITY.md`](../SECURITY.md).
 
 ## Support matrix
 
-What veil is tested on, and what it has been seen working on. The labels: **Tested** (automated tests cover it, in CI unless said otherwise: [`testing.md`](testing.md)), **Reported working** (seen working, in the developer's daily use, a run made once, or a user's report, but no test covers it), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below.
+What veil is tested on, and what it has been seen working on. The labels: **Tested** (automated tests cover it, in CI unless said otherwise: [`testing.md`](testing.md)), **Reported working** (seen working, in our daily use, a run made once, or a user's report, but no test covers it), **Untested**, **Unsupported**. The details of each row are in the [compatibility table](#compatibility) below.
 
 | | Status | What, when |
 |---|---|---|
 | **Compositors** | | |
 | sway (headless, 1.12) | Tested | Every test of `tests/headless.rs` and the short soaks, in CI; the measurements. |
-| Hyprland 0.56.2 and 0.57.2 | Reported working | The developer's daily wallpaper. Its backend is tested against a fake Hyprland (`tests/compositor.rs`, `tests/headless.rs`), its rendering is not: smoothness, lock, DPMS and logout are not covered by tests. |
+| Hyprland 0.56.2 and 0.57.2 | Reported working | Our daily wallpaper. Its backend is tested against a fake Hyprland (`tests/compositor.rs`, `tests/headless.rs`), its rendering is not: smoothness, lock, DPMS and logout are not covered by tests. |
 | river, niri, Wayfire, labwc, other `wlr-layer-shell` compositors | Untested | Should work. No automatic pause (every video counts as visible), only the release of a video nobody is shown. |
 | KDE Plasma (KWin) | Untested | Has `wlr-layer-shell`; nobody has tried. |
 | GNOME (Mutter) | Unsupported | No `wlr-layer-shell`. |
@@ -210,7 +210,7 @@ What veil is tested on, and what it has been seen working on. The labels: **Test
 | **Distributions** | | |
 | Debian 12 | Tested | CI builds the release binary against its GStreamer and runs the tests there (no compositor). |
 | Debian 12 and 13, Ubuntu 22.04 and 24.04, Fedora 44, Arch Linux (the prebuilt tarball, in a headless sway) | Reported working | Run once, 2026-10-19. Animated GIFs need GStreamer 1.26 or newer, and Ubuntu 24.04 drops frames of 1080p videos ([known issue 8](known-issues.md)). |
-| NixOS (the flake) | Tested | `nix flake check` in CI: the package, its plugins, completions and man pages. The developer's daily system, with `nix run` and `nix profile add` seen working (2026-10-20, 2026-11-04). |
+| NixOS (the flake) | Tested | `nix flake check` in CI: the package, its plugins, completions and man pages. Our daily system, with `nix run` and `nix profile add` seen working (2026-10-20, 2026-11-04). |
 
 ## Compatibility
 

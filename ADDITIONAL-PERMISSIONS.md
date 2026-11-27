@@ -1,6 +1,6 @@
 # Additional permissions
 
-veil is licensed under the [PolyForm Strict License 1.0.0](LICENSE): you may read the code and use veil for any noncommercial purpose, but not distribute it, change it or make new works from it, and not use it commercially. The licensor is Ordreth, the trade name of veil's author (an individual developer; Ordreth is not a registered company). The licensor grants the following on top of that license, for every version of veil that is released with this file. They do not widen the license in any other way.
+veil is licensed under the [PolyForm Strict License 1.0.0](LICENSE): you may read the code and use veil for any noncommercial purpose, but not distribute it, change it or make new works from it, and not use it commercially. The licensor is Ordreth, an independent software studio: the trade name under which veil's authors publish it (Ordreth is not a registered company). The licensor grants the following on top of that license, for every version of veil that is released with this file. They do not widen the license in any other way.
 
 ## 1. Release binaries and the files in them
 

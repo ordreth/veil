@@ -11,7 +11,7 @@
 #   veil-<version>-<target>/
 #     veil                          the binary
 #     install.sh                    installs everything below into a prefix
-#     README.md CHANGELOG.md LICENSE ADDITIONAL-PERMISSIONS.md THIRD-PARTY-NOTICES
+#     README.md CHANGELOG.md PRIVACY.md SECURITY.md LICENSE ADDITIONAL-PERMISSIONS.md THIRD-PARTY-NOTICES
 #     completions/                  veil.bash _veil veil.fish veil.nu
 #     man/                          veil.1 veil-set.1 ...
 #     contrib/systemd/veil.service  ExecStart=/usr/bin/veil (install.sh changes it)
@@ -48,7 +48,7 @@ mkdir -p "$dir/completions" "$dir/man" "$dir/contrib/systemd" "$dir/docs"
 
 install -m755 "$binary" "$dir/veil"
 install -m755 "$root/scripts/release/install.sh" "$dir/install.sh"
-install -m644 "$root/README.md" "$root/CHANGELOG.md" "$root/LICENSE" "$root/ADDITIONAL-PERMISSIONS.md" "$root/THIRD-PARTY-NOTICES" "$dir/"
+install -m644 "$root/README.md" "$root/CHANGELOG.md" "$root/PRIVACY.md" "$root/SECURITY.md" "$root/LICENSE" "$root/ADDITIONAL-PERMISSIONS.md" "$root/THIRD-PARTY-NOTICES" "$dir/"
 install -m644 "$root/contrib/systemd/veil.service" "$dir/contrib/systemd/"
 install -m644 "$root/contrib/config.example.toml" "$dir/contrib/"
 # What a user reads; testing.md and roadmap.md are for the people who work on veil.

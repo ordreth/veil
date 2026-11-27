@@ -4,7 +4,7 @@ description: "Iniciar o daemon, definir papéis de parede, os comandos de contro
 group: "Start"
 order: 2
 source: "README.md"
-source_hash: "cdd7532edb15796b4d5a624320e3bb62322ea41ff9e71b334e8311d0609a62be"
+source_hash: "70c3673ee61222c353340af3238b1ab8e0881b4bd6a1e67f1544cbccbb277f0b"
 ---
 
 ## Iniciar o daemon
@@ -115,7 +115,7 @@ mode = "fit"
 input = "~/Pictures/wallpaper.png"
 ```
 
-Uma opção na linha de comando vale mais que o arquivo, e o arquivo vale mais que o padrão embutido. Um monitor com papel de parede no arquivo o exibe a cada início; `veil set` o muda até o daemon parar. O arquivo só é lido quando o daemon inicia. `veil config check` o lê como o daemon o leria, verifica seus papéis de parede e imprime com o que o daemon iniciaria; uma chave ou um valor incorreto é informado com a linha e a coluna. Todas as chaves estão em [`docs/configuration.md`](/apps/veil/docs/configuration), e [`contrib/config.example.toml`](https://github.com/ordreth/veil/blob/main/contrib/config.example.toml) é um arquivo comentado.
+Uma opção na linha de comando vale mais que o arquivo, e o arquivo vale mais que o padrão embutido. Um monitor com papel de parede no arquivo o exibe a cada início; `veil set` o muda até o daemon parar. O arquivo só é lido quando o daemon inicia. `veil config check` o lê como o daemon o leria, verifica seus papéis de parede e imprime com o que o daemon iniciaria; uma chave ou um valor incorreto é informado com a linha e a coluna. Todas as chaves estão em [`docs/configuration.md`](/apps/veil/docs/configuration), e [`contrib/config.example.toml`](https://github.com/ordreth/veil/blob/stable/contrib/config.example.toml) é um arquivo comentado.
 
 ## Papéis de parede salvos
 
@@ -123,7 +123,7 @@ Todo `veil set` e `veil clear` que é exibido é salvo, por monitor, em `$XDG_ST
 
 ## Executar como serviço de usuário do systemd
 
-A unidade ([`contrib/systemd/veil.service`](https://github.com/ordreth/veil/blob/main/contrib/systemd/veil.service)) executa `veil daemon` sem opções, então exibe os papéis de parede do arquivo de configuração e os salvos. Instalada como acima (ou pelo pacote do Nix):
+A unidade ([`contrib/systemd/veil.service`](https://github.com/ordreth/veil/blob/stable/contrib/systemd/veil.service)) executa `veil daemon` sem opções, então exibe os papéis de parede do arquivo de configuração e os salvos. Instalada como acima (ou pelo pacote do Nix):
 
 ```bash
 systemctl --user daemon-reload
@@ -131,7 +131,7 @@ systemctl --user enable --now veil
 ```
 
 - `systemctl --user start veil` retorna quando todos os monitores exibem seu papel de parede, e `systemctl --user status veil` informa como foi a inicialização.
-- Após uma falha (como a das mudanças de monitor, [problema conhecido 1](/apps/veil/docs/known-issues)), ele é reiniciado depois de 2 segundos, com os papéis de parede que tinha. Ele não é reiniciado após um arquivo de configuração incorreto (corrija-o e depois `systemctl --user restart veil`), um segundo daemon ou o fim da sessão.
+- Após uma falha, ele é reiniciado depois de 2 segundos, com os papéis de parede que tinha. Ele não é reiniciado após um arquivo de configuração incorreto (corrija-o e depois `systemctl --user restart veil`), um segundo daemon ou o fim da sessão.
 - Um watchdog reinicia um daemon cujo loop de eventos travou, e `MALLOC_ARENA_MAX=1` mantém a memória estável ao longo das trocas de vídeo.
 - O log fica no journal: `journalctl --user -u veil`.
 

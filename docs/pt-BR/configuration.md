@@ -4,10 +4,10 @@ description: "Cada chave do config.toml e como ele se combina com veil set."
 group: "Reference"
 order: 4
 source: "docs/configuration.md"
-source_hash: "e6846ea73bb2eb394468bfb53320d7cf11b85c15eff0a9268e689e8a77fbe683"
+source_hash: "f6b0533ad5fd26e2c2a4d43056d6684cd2cf2b0115c3fddac13e154273d3be4f"
 ---
 
-O `veil daemon` lê um arquivo TOML ao iniciar. O arquivo define as opções do daemon e dá a cada saída o seu papel de parede, de modo que uma configuração pode ser escrita uma só vez, nos dotfiles ou em um módulo do Nix, em vez de em uma linha de comando. Um exemplo comentado é [`contrib/config.example.toml`](https://github.com/ordreth/veil/blob/main/contrib/config.example.toml). O pacote do Nix o instala como `share/doc/veil/config.example.toml`.
+O `veil daemon` lê um arquivo TOML ao iniciar. O arquivo define as opções do daemon e dá a cada saída o seu papel de parede, de modo que uma configuração pode ser escrita uma só vez, nos dotfiles ou em um módulo do Nix, em vez de em uma linha de comando. Um exemplo comentado é [`contrib/config.example.toml`](https://github.com/ordreth/veil/blob/stable/contrib/config.example.toml). O pacote do Nix o instala como `share/doc/veil/config.example.toml`.
 
 ## Onde fica
 
@@ -60,7 +60,7 @@ Estas chaves são as opções de linha de comando do daemon. Uma opção dada na
 | `mode` | string | `"fill"` | `--mode` | Como um papel de parede é ajustado à sua saída: `fill` (cobre, cortando o excesso), `fit` (por dentro, com barras em `bg_color`), `stretch` (ignora a proporção), `center` (tamanho nativo, centralizado), `tile` (tamanho nativo, repetido; `center` para um vídeo). Também é o padrão de `veil set`. |
 | `bg_color` | string `"#rrggbb"` | `"#000000"` | `--bg-color` | Cor do que o papel de parede não cobre, e de uma saída sem papel de parede. Também é o padrão de `veil set` e `veil clear`. |
 | `pause_on` | string | `"fullscreen"` | `--pause-on` | Quando um vídeo é pausado por não poder ser visto: `never`, `fullscreen` (uma janela em tela cheia na sua saída), `covered` (janelas cobrem a saída inteira, as translúcidas também). Funciona com Hyprland e sway. |
-| `release_unseen_after` | inteiro ≥ 0 | `2` | `--release-unseen-after` | Segundos que um vídeo pode ficar sem que o compositor aceite seus quadros (uma tela bloqueada, um monitor desligado) antes de ser interrompido. Ele recomeça do início quando volta a ser exibido. `0`: nunca. |
+| `release_unseen_after` | inteiro ≥ 0 | `2` | `--release-unseen-after` | Segundos que um vídeo pode ficar sem que o compositor aceite seus quadros (uma tela bloqueada, um monitor desligado) antes de ser interrompido. Ele recomeça do início quando volta a ser exibido. É também por quanto tempo um vídeo cujo monitor sumiu (desconectado, desativado) é mantido, pausado, para continuar de onde estava quando o monitor voltar. `0`: nunca é interrompido, e é mantido até o monitor voltar. |
 | `outputs` | array de strings | `[]` | `--output` (repetível) | As saídas em que desenhar, pelo nome. Vazio: todas as saídas, inclusive as conectadas depois. Quando dado na linha de comando, `--output` substitui esta lista. |
 
 ### `[output."NAME"]`

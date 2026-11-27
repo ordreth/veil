@@ -1,10 +1,10 @@
 ---
-title: "Segurança"
+title: "Política de segurança"
 description: "Como relatar um problema de segurança e o que o veil faz a respeito da sua superfície de ataque."
-group: "Project"
-order: 14
+group: "Legal"
+order: 16
 source: "SECURITY.md"
-source_hash: "fc4e5a632a43bb880e5de0aacef1d1b2afecfa77fee391dd4b3d5c3ea5ff1f98"
+source_hash: "da13ce0248791a485db04678487e972d72c61ff19995b6f9ec527891dddbf8ca"
 ---
 
 ## Relatar uma vulnerabilidade
@@ -21,7 +21,7 @@ Você será informado quando o relato tiver sido lido e do que está planejado. 
 
 ## Versões suportadas
 
-O veil está em beta (1.0.0-beta.1). As correções vão para o `main` e para um novo lançamento; somente o lançamento mais recente as recebe.
+O veil está em beta. As correções vão para o `main` e para um novo lançamento; somente o lançamento mais recente (o branch `stable`) as recebe. Uma compilação do `main` tem uma versão terminada em `-dev`: informe também o commit dela.
 
 ## Verificar um lançamento
 
@@ -47,10 +47,10 @@ Um cliente não pode bloquear o daemon nem fazê-lo terminar: as requisições t
 
 **O que o veil escreve.** O arquivo de estado (`$XDG_STATE_HOME/veil/state.json`) é escrito com modo `0600` em diretórios com modo `0700`, em um arquivo temporário que é renomeado sobre ele. O socket de controle e o seu arquivo de lock têm modo `0600`. As notificações de desktop passam pelo barramento de sessão e podem conter os caminhos dos papéis de parede.
 
-**O código.** O `unsafe` é permitido em um único módulo, `src/engine/video.rs`, para entregar ao GStreamer os ponteiros brutos do Wayland, com o motivo de cada uso ao lado; o compilador o recusa em todos os outros lugares. Um panic encerra o daemon (a compilação de lançamento aborta) em vez de deixá-lo em um estado quebrado.
+**O código.** O `unsafe` é permitido em um único módulo, `engine::video` (`src/engine/video.rs` e `src/engine/video/`), e o compilador o recusa em todos os outros lugares. Esse módulo cria uma subclasse de um elemento do GStreamer (o sink de vídeo próprio do veil), e as macros do `glib` que fazem isso se expandem em código `unsafe`; o `unsafe` dele mesmo é um único bloco, em `src/engine/video/sink.rs`, que pega emprestado do GStreamer o descritor de arquivo do dmabuf de um quadro, com o motivo ao lado (o clippy recusa um bloco `unsafe` sem ele). Um panic encerra o daemon (a compilação de lançamento aborta) em vez de deixá-lo em um estado quebrado.
 
 ## O que está no escopo
 
 Relate de forma privada qualquer coisa que permita a alguém fazer o que o usuário não permitiu: um processo de outro usuário fazendo o daemon fazer qualquer coisa, um arquivo que o veil escreve sendo legível por outro usuário ou escrito em outro lugar, uma requisição ou uma resposta do compositor que corrompe a memória ou executa código, uma imagem que contorna os limites de tamanho.
 
-Não é uma vulnerabilidade: o que os processos do próprio usuário podem fazer pelo socket (acima) e a falha grave do problema conhecido 1 (uma mudança de monitor enquanto um vídeo é reproduzido, [`docs/known-issues.md`](/apps/veil/docs/known-issues)). Uma falha grave ou um travamento causado por uma requisição malformada ou por uma resposta do compositor que não faz nada do que foi dito acima é um bug: relate-o no [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports).
+Não é uma vulnerabilidade: o que os processos do próprio usuário podem fazer pelo socket (acima) e, na 1.0.0-beta.1, a falha grave do problema conhecido 1 (uma mudança de monitor enquanto um vídeo é reproduzido, [`docs/known-issues.md`](/apps/veil/docs/known-issues); corrigida no `main`). Uma falha grave ou um travamento causado por uma requisição malformada ou por uma resposta do compositor que não faz nada do que foi dito acima é um bug: relate-o no [Discussions, categoria "Reports"](https://github.com/ordreth/veil/discussions/categories/reports).

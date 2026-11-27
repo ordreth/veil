@@ -4,7 +4,7 @@ description: "O que o veil não consegue corrigir hoje, e por quê."
 group: "Reference"
 order: 9
 source: "docs/known-issues.md"
-source_hash: "a5a6a9f46965fcaecd6e7c26e7e3e22b8c34ae0c1520ec0a2ab72dec93b4b7fc"
+source_hash: "2771f905064739ee2ba9fb66ae6e8278f10ee2ac749eef438511763e055283af"
 ---
 
 Este arquivo registra problemas que o veil não consegue (ou deliberadamente não quer) resolver hoje, o que foi medido, quais opções foram consideradas e o que foi decidido. Ele existe para que quem voltar a um destes problemas mais tarde não precise redescobri-lo.
@@ -15,9 +15,9 @@ Cada entrada tem a data da última verificação. Verifique de novo antes de con
 
 ## 1. Uma mudança de monitor enquanto um vídeo é reproduzido derruba o daemon (bug do `waylandsink` do GStreamer)
 
-**Situação:** aberto, aceito como limitação conhecida. Não corrigido no veil, sem patch no flake do Nix, não relatado ao projeto original (decisão de 2026-10-10, veja "Decisão" abaixo).
-**Afeta:** apenas papéis de parede em vídeo. Imagens estáticas e a cor de fundo sólida não são afetadas.
-**Última verificação:** 2026-10-15 (um monitor desligado e ligado), GStreamer 1.28.7 (nixpkgs unstable); o código foi comparado com o `main` do GStreamer em 2026-10-10.
+**Situação:** corrigido depois da 1.0.0-beta.1 (2026-11-09): o veil não usa mais o `waylandsink` (opção E, veja "Corrigido: o sink próprio do veil" no fim desta entrada). O bug em si continua no GStreamer e não foi relatado ao projeto original.
+**Afetava:** os papéis de parede em vídeo da 1.0.0-beta.1. Imagens estáticas e a cor de fundo sólida nunca foram afetadas.
+**Última verificação:** 2026-11-09, sway 1.12 headless, GStreamer 1.28.7: nenhuma das mudanças das tabelas abaixo encerra mais o daemon (`output_changes_while_videos_play_leave_them_playing` em `tests/headless.rs`). Ainda não verificado no Hyprland. O que vem a seguir, até "Corrigido", é o histórico.
 
 ### Sintoma
 
@@ -100,7 +100,7 @@ Uma correção precisa tornar `output_done` seguro para ser chamado mais de uma 
 - O pipeline de vídeo (e com ele o sink e sua thread) existe apenas enquanto há uma superfície onde reproduzir. Quando a saída do papel de parede some, `VideoEngine::detach` descarta o pipeline antes de a superfície ser destruída, e um novo pipeline é construído quando a saída volta. Nada pode falhar enquanto a saída está ausente.
 - Um vídeo cujos quadros o compositor recusou por 2 segundos (`--release-unseen-after`) é parado e seu pipeline descartado, e construído de novo quando a saída é desenhada outra vez. Um monitor que ficou desligado por mais tempo que isso não tem sink para matar quando volta. Isso não é uma correção: não cobre um monitor desligado e ligado em menos de 2 segundos, um vídeo pausado pela pausa automática (que não está sendo visto), `--release-unseen-after 0`, nem qualquer outra mudança de saída.
 - O papel de parede de cada saída é salvo (`$XDG_STATE_HOME/veil/state.json`), e um daemon iniciado de novo sem `--input` mostra os mesmos papéis de parede. Verificado em um sway headless em 2026-10-16: uma mudança de escala da saída em que um vídeo era reproduzido matou o daemon (código de saída 139), e o daemon iniciado de novo à mão mostrou a imagem e o vídeo que tinha.
-- A unidade de usuário do systemd (`contrib/systemd/veil.service`, `Restart=on-failure`, `RestartSec=2`) reinicia o daemon após a falha, e ele volta com esses papéis de parede: a opção D está feita. Verificado em um sway headless sob o gerenciador de usuário do systemd do desenvolvedor: a mudança de escala da saída em que um vídeo era reproduzido matou o daemon (`code=dumped, status=11/SEGV`), e 2.9 s depois a unidade estava ativa de novo com o vídeo em reprodução. Isso exige que o daemon rode sob a unidade; iniciado à mão, ele ainda precisa ser iniciado de novo à mão. No Hyprland isso ainda precisa ser verificado à mão (`manual-tests.md`, "In a real Hyprland session").
+- A unidade de usuário do systemd (`contrib/systemd/veil.service`, `Restart=on-failure`, `RestartSec=2`) reinicia o daemon após a falha, e ele volta com esses papéis de parede: a opção D está feita. Verificado em um sway headless sob o gerenciador de usuário do systemd do desenvolvedor: a mudança de escala da saída em que um vídeo era reproduzido matou o daemon (`code=dumped, status=11/SEGV`), e 2.9 s depois a unidade estava ativa de novo com o vídeo em reprodução. Isso exige que o daemon rode sob a unidade; iniciado à mão, ele ainda precisa ser iniciado de novo à mão. Um teste disso ainda está por escrever ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Checks to be turned into tests").
 - A limitação está declarada no README ("Known limitations"), na documentação do módulo `src/engine/video.rs` e aqui.
 
 ### Opções consideradas
@@ -123,9 +123,18 @@ Opção A. Fazer tudo o que é possível do lado do veil, documentar o resto e n
 - Uma versão do GStreamer muda `output_done` em `gstwldisplay.c` (verificar se a linha `g_object_steal_data` ainda está lá).
 - ~~A investigação de cópia zero~~: decidido em 2026-10-17: o veil mantém o `waylandsink` na 1.0. As medições não tornaram necessário substituí-lo: o que um vídeo custa é a conversão de cor, de que precisa qualquer sink que mostre os quadros da NVIDIA por memória compartilhada (entrada 7). A opção E fica para depois da 1.0; para a 1.0 a resposta a este problema é a opção D (a unidade do systemd e os papéis de parede salvos), ainda a verificar à mão no Hyprland.
 - ~~Suporte a vários monitores~~: feito; medido de novo (veja a segunda tabela acima). Como esperado, o bug é o mesmo e atinge mais configurações, porque agora todo monitor reproduz o vídeo. É até agora o argumento mais forte para a opção B, D ou E.
-- Os papéis de parede salvos e a unidade do systemd estão feitos (2026-10-16, veja "O que o veil faz a respeito"): sob a unidade do systemd, uma falha se recupera sozinha. Ainda a verificar à mão no Hyprland.
+- Os papéis de parede salvos e a unidade do systemd estão feitos (2026-10-16, veja "O que o veil faz a respeito"): sob a unidade do systemd, uma falha se recupera sozinha. Um teste disso ainda está por escrever ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Checks to be turned into tests").
+### Corrigido: o sink próprio do veil (2026-11-09)
 
-### Como reproduzir
+Opção E. O veil mostra ele mesmo os quadros de um vídeo: `PlaneSink` (`src/engine/video/sink.rs`), um sink de vídeo do GStreamer próprio do veil, converte cada quadro em um buffer `wl_shm` de uma subsuperfície que o código Wayland do veil cria (`src/wayland/plane.rs`). Os objetos da subsuperfície são criados na fila de eventos do próprio veil, então seus eventos são tratados pelo loop de eventos, e nada vincula um `wl_output` além do código do próprio veil. Com isso a falha desapareceu, e também o motivo para o reinício sob a unidade do systemd e para a maior parte da liberação de vídeos não vistos (os dois ficam: a unidade para qualquer outra falha, a liberação porque economiza a CPU de um vídeo que ninguém vê).
+
+O que foi preciso fazer que o `waylandsink` fazia sozinho: o ritmo dos frame callbacks (um quadro que chega enquanto o compositor não aceitou o anterior é descartado e contado, então o `wayland::unseen` continua funcionando), o quadro de preroll (exibido em `Paused`, e um preroll nunca pode relatar um descarte, senão o `basesink` nunca termina a mudança de estado: descoberto quando um vídeo pausado atrás de uma janela em tela cheia nunca mais voltou a tocar), e a posição da subsuperfície (estado do seu pai, com commit feito pelo loop de eventos quando o sink informa um movimento).
+
+O que se ganhou além disso: a conversão e o recorte de `fill` e `center` acontecem em uma única passada, direto na memória do compositor, e nenhum pixel recortado é convertido (entrada 7); o loop de eventos acorda cerca de metade das vezes enquanto um vídeo é reproduzido (`measurements.md`, "veil's own sink"). Reduzir na CPU um quadro maior que o seu lugar foi tentado e abandonado: o conversor do GStreamer é mais lento quando escala do que quando converte no tamanho do próprio quadro (`src/engine/video/sink.rs`). O que custa: memória, em um compositor que retém o quadro que exibe até o próximo substituí-lo (um sway headless): o sink então passa de dois buffers para três, cerca de 100 MB a mais que o `waylandsink` para um vídeo 4K. O que se perdeu: quadros em dmabufs. O sink aceita só memória de sistema; na NVIDIA isso era tudo o que havia (entrada 7), em Intel e AMD com VA-API um decodificador que poderia entregar dmabufs ao compositor agora entrega memória de sistema ao veil, o que nunca foi medido em nenhum dos casos (sem esse hardware).
+
+O teste que esperava a falha virou `output_changes_while_videos_play_leave_them_playing`: duas saídas reproduzindo o mesmo clipe, uma mudança de escala, um movimento, uma desativação e uma ativação, um desligar e ligar em menos de um segundo, e uma saída nova; o daemon continua rodando e todo vídeo se move depois.
+
+### Como reproduzir (1.0.0-beta.1)
 
 Este é o procedimento usado para encontrar o bug, escrito à mão (o sway e os plugins do GStreamer do veil precisam estar disponíveis, por exemplo `nix shell nixpkgs#sway` dentro do `nix develop`):
 
@@ -147,7 +156,7 @@ coredumpctl info veil                  # shows output_done on thread GstWlDispla
 
 ## 2. Um pipeline de vídeo não pode passar para outra superfície
 
-**Situação:** tratado. Registrado porque restringe o projeto.
+**Situação:** corrigido (2026-11-20). Desde que o veil mostra os seus vídeos ele mesmo (2026-11-09, entrada 1), um pipeline pode passar para outra superfície. Quando uma saída some, o pipeline do seu vídeo é mantido, pausado no quadro em tela e sem o seu plano (`VideoEngine::set_aside`), e a próxima superfície da saída o recebe de volta com um seek para esse quadro: o vídeo continua de onde estava (`a_video_goes_on_where_it_was_when_its_output_comes_back` em `tests/headless.rs`). Um pipeline mantido retém sua memória e suas threads, por isso é liberado depois de `--release-unseen-after` (2 s por padrão), como um vídeo não visto, e uma saída que fica fora por mais tempo recebe o vídeo do início. O que vem a seguir é o histórico.
 **Última verificação:** 2026-10-10, GStreamer 1.28.7.
 
 O `waylandsink` não pode trocar seu handle de janela: um segundo `set_window_handle` apenas registra "changing window handle is not supported". Ele também mantém seus objetos de janela e de display até o elemento ser finalizado, mesmo no estado `Null`.
@@ -258,7 +267,7 @@ Nomes de `--output` que não existem são um erro **apenas na inicialização**,
 
 ## 5. Um vídeo que cobre toda a superfície fica parado por um momento a cada repetição
 
-**Situação:** não reproduzido desde 2026-10-16, com nenhuma compilação, nem com a que o encontrou; mantido aberto até o mantenedor procurá-lo no Hyprland (`manual-tests.md`, "In a real Hyprland session"). Encontrado em 2026-10-13, e mais antigo que isso: a compilação anterior à adição da recuperação de erros se comportava da mesma forma então.
+**Situação:** não reproduzido desde 2026-10-16, com nenhuma compilação, nem com a que o encontrou; mantido aberto como registro. Nenhum teste o procura, e o Hyprland, onde ele mais importaria, não é coberto por testes ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Not covered by any test"); ele é reaberto se for visto no uso. Encontrado em 2026-10-13, e mais antigo que isso: a compilação anterior à adição da recuperação de erros se comportava da mesma forma então.
 **Afeta:** vídeos em `fill` (o padrão) e `stretch`, e qualquer modo em que o vídeo por acaso cubra a superfície por completo. Não `fit` com barras nem `center` com uma borda.
 **Última verificação:** 2026-10-16, sway 1.12 headless (renderizador pixman, quadros por `wl_shm`), GStreamer 1.28.7: não estava lá. **Não verificado no Hyprland nem em hardware real.**
 
@@ -324,13 +333,13 @@ Manter o loop. Seu custo são despertares, não CPU: em um sway headless, de 160
 
 ### Quando revisar
 
-Quando a causa for conhecida, ou se uma mudança posterior alterar como os quadros chegam à tela (substituir o `waylandsink`, depois da 1.0). O que quer que seja tentado precisa ser verificado no Hyprland, não só em um sway headless.
+Quando a causa for conhecida, ou se uma mudança posterior alterar como os quadros chegam à tela. Substituir o `waylandsink` (2026-11-09, entrada 1) manteve tudo de que esta entrada depende: a subsuperfície do vídeo é dessincronizada e recebe commit do sink, como a do `waylandsink`, e o loop faz commit da superfície do veil como antes. Nenhum teste cobre isto: só o Hyprland mostrou o problema, e a renderização do Hyprland não é coberta por testes ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Not covered by any test"). Uma mudança no loop passa nos testes headless de qualquer forma, então ele fica como está até a causa ser conhecida; uma regressão apareceria no uso diário no Hyprland.
 
 Não tentado: fazer commit na taxa de quadros do vídeo em vez de a cada frame callback (a alternativa considerada quando o loop foi medido). Esse trabalho foi encerrado em 2026-10-16 sem isso, por decisão do mantenedor, com sua meta (despertares próximos da taxa de quadros do vídeo) não atingida. Fica para depois da 1.0.
 
 ## 7. Um vídeo custa CPU: seus quadros são convertidos para RGB na CPU
 
-**Situação:** aberto, aceito para a 1.0 (2026-10-17). **Afeta:** todo papel de parede em vídeo cujo decodificador entrega seus quadros em memória de sistema, o que na máquina de referência (NVIDIA) é todo decodificador. A meta de "menos de 1 % de CPU" para vídeos não é atingida; as imagens não são afetadas (0 %).
+**Situação:** aberto, aceito para a 1.0 (2026-10-17); resolvido para decodificadores VA-API cujos dmabufs o compositor aceita (2026-11-20, abaixo). **Afeta:** todo papel de parede em vídeo cujo decodificador entrega seus quadros em memória de sistema, o que na máquina de referência (NVIDIA) é todo decodificador. A meta de "menos de 1 % de CPU" para vídeos não é atingida; as imagens não são afetadas (0 %).
 
 ### Sintoma
 
@@ -350,10 +359,26 @@ A decodificação custa cerca de 1 % de um núcleo. O resto é o `videoconvert` 
 
 | Opção | O que dá | Por que não foi feita (ainda) |
 |---|---|---|
-| **A. Decodificadores VA-API com saída DMABuf** | Cópia zero: os quadros do decodificador vão ao compositor como estão. | Precisa de um driver VA-API da Intel ou da AMD. É o que o GStreamer escolhe lá, e nada no pipeline do veil atrapalha; não verificado: não havia esse hardware, e a tabela de compatibilidade de `troubleshooting.md` pede a testadores que o tenham que relatem o decodificador e a CPU que um vídeo custa. Na NVIDIA, o driver VA não entrega dmabufs ao GStreamer. |
-| **B. Converter na GPU** (`cudaconvertscale`, `glcolorconvert`, Vulkan) | A CPU apenas copia o quadro RGB. | O `cudaconvertscale` não está nesta compilação do `nvcodec`; o caminho GL não negociou aqui e traria um contexto GL para o daemon, com uma cadeia de elementos que só serve para a NVIDIA. Não levada adiante. |
+| **A. Decodificadores VA-API com saída DMABuf** | Cópia zero: os quadros do decodificador vão ao compositor como estão. | Feito (2026-11-20, abaixo). Precisa de um driver VA-API da Intel ou da AMD; na NVIDIA, o driver VA não entrega dmabufs ao GStreamer. |
+| **B. Converter na GPU** (`cudaconvertscale`, `glcolorconvert`, Vulkan) | A CPU apenas copia o quadro RGB. | O `cudaconvertscale` não está nesta compilação do `nvcodec`; o caminho GL não negociou aqui e traria um contexto GL para o daemon, com uma cadeia de elementos que só serve para a NVIDIA. Não levada adiante. Verificado de novo em 2026-11-20 com o GStreamer 1.28.8: o `nvcodec` registra `cudaconvert`, `cudascale` e `cudaconvertscale` só onde o compilador em tempo de execução da NVIDIA (NVRTC, do CUDA toolkit, não do driver) carrega, então a maioria dos sistemas também não os teria; `nvh264dec ! glcolorconvert ! gldownload` continuou sem negociar, sem display e com EGL surfaceless; não existe `vulkancolorconvert`. O que resta é a opção D, um contexto de GPU próprio do veil. |
 | **C. Dumb buffers do DRM** (`waylandsink drm-device=...`) | NV12 copiado para um dmabuf, sem conversão. | O sway só aceita dmabufs NV12 com os modificadores tiled da NVIDIA, não como dumb buffers lineares: ele ainda convertia (21.5 %). |
 | **D. Substituir o `waylandsink`** (entrada 1, opção E) | Um sink próprio do veil poderia receber quadros CUDA ou GL, exportá-los como dmabufs, e também eliminaria as entradas 1 e 2 e os despertares da entrada 6. | Grande, e depois da 1.0. |
+
+### Desde 2026-11-09
+
+O sink próprio do veil substituiu o `waylandsink` (entrada 1). A conversão é o mesmo código (`GstVideoConverter`, duas threads), agora dentro do sink, direto no buffer `wl_shm`, e ela pula o que `fill` e `center` recortam. O custo de um vídeo é o mesmo, dentro do ruído (`measurements.md`, "veil's own sink"). O caminho para um vídeo mais barato não mudou: dmabufs (VA-API em Intel e AMD, que o sink ainda não aceita) ou uma conversão na GPU.
+
+### Desde 2026-11-20: quadros em dmabufs
+
+O sink aceita os quadros de um decodificador em dmabufs (`video/x-raw(memory:DMABuf)`, `DMA_DRM`) quando o compositor aceita seu formato e modificador (`zwp_linux_dmabuf_v1`), e os exibe como estão: sem conversão, sem cópia, o recorte é o do viewport. Em uma GPU Intel (Raptor Lake, `vah264dec`) em um sway headless renderizando nessa GPU, H.264 em 1080p30 custa cerca de 2 % de um núcleo em vez de 45 %, e 4K a 60 fps é reproduzido por inteiro por cerca de 7 % em vez de perder um terço dos quadros a 175 % (`measurements.md`, "Frames in dmabufs").
+
+O que resta:
+
+- **NVIDIA:** sem mudança. Os decodificadores dela não entregam dmabufs (seria preciso a opção B ou D).
+- **As cores exigem que o compositor saiba como estão codificadas.** O próprio compositor transforma o quadro NV12 em RGB, e é informado da codificação (BT.709, BT.601, BT.2020, a faixa) por meio do `wp_color_representation_v1`. Um que não pode ser informado usa BT.601 com a faixa limitada, o padrão da importação de dmabuf do EGL, e mostraria um vídeo BT.709 com cores erradas (medido: vermelho 231 em vez de 251, ciano com vermelho). O veil então só lhe entrega vídeos codificados como BT.601, e converte os outros na CPU, como antes. O sway 1.12 renderizando com `gles2` anuncia o protocolo sem nenhuma codificação; com `vulkan` ele anuncia BT.601, BT.709 e BT.2020 nas duas faixas. A maior parte dos vídeos HD é BT.709 (e o GStreamer toma um vídeo HD sem marcação por BT.709), então em um compositor que não pode ser informado a maioria dos vídeos continua sendo convertida.
+- **O Hyprland até a 0.57 não aceita dmabufs YUV.** O renderizador dele deixa todo formato YUV (NV12, P010, ...) de fora dos formatos que lista (`Do not advertise YUV until the renderer supports it`, `src/render/OpenGL.cpp`), e ele não tem `wp_color_representation_v1`, então lá todo vídeo é convertido na CPU, inclusive os BT.601; o log diz isso no início (`compositor takes dmabufs in no YUV format`). Visto na 0.57.2 (2026-11-20). O branch principal do Hyprland (novembro de 2026) lista formatos YUV, amostrados como texturas externas, e tem `wp_color_representation_v1`: o lançamento depois da 0.57 deve aceitar os quadros do veil sem nenhuma mudança no veil. Ainda não testado.
+- **Um decodificador não negocia de novo enquanto reproduz.** Quando o compositor recusa um dmabuf, ou não pode ser informado da codificação de um vídeo, o sink oferece só memória de sistema e o pipeline é iniciado mais uma vez (os decodificadores VA-API ignoram um pedido para negociar de novo); enquanto isso, o papel de parede anterior fica na tela.
+- **Notebooks com duas GPUs:** o GStreamer dá aos decodificadores da NVIDIA um rank acima dos VA-API, então um notebook com as duas decodifica H.264, HEVC e AV1 na placa NVIDIA, em memória de sistema, mesmo quando o compositor roda na GPU Intel e aceitaria os dmabufs dela (o VP9 foi para o `vavp9dec` na máquina medida). `GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvav1dec:0` faz o GStreamer escolher os decodificadores VA-API (`troubleshooting.md`). O veil não escolhe o decodificador sozinho.
 
 ### Decisão (2026-10-17)
 
@@ -361,12 +386,12 @@ Manter o `waylandsink` na 1.0, com o pipeline correto mais barato (`native-video
 
 ### Quando revisar
 
-Quando a substituição do `waylandsink` for retomada depois da 1.0 (opção D), quando o `nvcodec` ou o driver VA da NVIDIA puderem entregar dmabufs, e quando um testador relatar um vídeo em hardware Intel ou AMD (opção A; nenhum estava disponível em 2026-10-19, e uma linha foi deixada para isso na tabela de compatibilidade de `troubleshooting.md`).
+Quando o `nvcodec` ou o driver VA da NVIDIA puderem entregar dmabufs, quando uma conversão na GPU for retomada (opção B), quando o suporte do Hyprland ao `wp_color_representation_v1` for conhecido (ele decide se um vídeo BT.709 segue o caminho dmabuf ali), e quando um testador relatar um vídeo em hardware AMD.
 
 ## 8. Versões mais antigas do GStreamer: GIFs animados e quadros descartados no Ubuntu 24.04
 
 **Situação:** aberto, documentado (2026-10-19). A montante, no GStreamer e no FFmpeg das distribuições; não no veil. **Afeta:** o tarball de lançamento (que usa o GStreamer do sistema) no Debian 12, no Ubuntu 22.04 e no Ubuntu 24.04. O pacote Nix traz o GStreamer 1.28 e não é afetado, nem o Debian 13, o Fedora 44 e o Arch.
-**Última verificação:** 2026-10-19, com o tarball x86_64 da 0.1.0 em um contêiner de cada distribuição, contra um sway headless no host (`docs/manual-tests.md`, "The release tarball").
+**Última verificação:** 2026-10-19, com o tarball x86_64 da 0.1.0 em um contêiner de cada distribuição, contra um sway headless no host, à mão (não é um teste: [`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Checks to be turned into tests").
 
 ### Sintoma
 
@@ -398,3 +423,26 @@ C. O README lista as distribuições em que o tarball foi executado e aponta par
 ### Quando revisar
 
 Quando um testador relatar o tarball em uma destas distribuições com um compositor em hardware real (especialmente o Ubuntu 24.04 e seus quadros descartados), ou quando mudarem as distribuições mais antigas a que o tarball se destina.
+
+---
+
+## 9. Cores desbotadas de decodificadores VA-API em memória de sistema
+
+**Situação:** corrigido depois da 1.0.0-beta.1 (2026-11-20, veja "Corrigido" no fim desta entrada). **Afetava:** vídeos decodificados por um decodificador VA-API (Intel, AMD) cujos quadros o veil converte na CPU: todo vídeo assim na 1.0.0-beta.1, e depois os que não podem ir ao compositor em dmabufs (entrada 7), o que no Hyprland até a 0.57 é todo vídeo.
+**Última verificação:** 2026-11-20, `vah264dec` (GStreamer 1.28.8) em uma GPU Intel, um sway headless renderizando com `pixman` (quadros convertidos na CPU).
+
+### Sintoma
+
+As cores ficam mais pálidas e mais escuras do que são: em clipes de barras de cores codificados como BT.709 e como BT.601, ambos em faixa limitada, o vermelho puro aparece como cerca de (237, 13, 15) em vez de (251, 0, 0) (a decodificação do ffmpeg), e o branco fica cinza. Os mesmos clipes em dmabufs, convertidos pelo compositor, ficam certos.
+
+### Causa
+
+As caps do decodificador em memória de sistema dizem `colorimetry=0:3:0:0`: a matriz (BT.709), mas uma faixa desconhecida. O conversor do GStreamer toma uma faixa desconhecida pela completa e não estica os 16 a 235 de um vídeo para 0 a 255. O caminho dmabuf do veil toma uma faixa desconhecida pela limitada, como o próprio GStreamer faz quando completa uma colorimetria.
+
+### O que corrigiria
+
+Tomar a faixa desconhecida de um stream YCbCr pela limitada antes de o conversor ser criado (`sink.rs`, `new_converter`). Deixado para uma mudança própria: ela muda as cores de todo vídeo que vem por esse caminho, o que deve ser verificado à parte. Se os decodificadores da NVIDIA informam a faixa não foi verificado.
+
+### Corrigido (2026-11-20)
+
+Antes de o conversor ser criado, o que a colorimetria do stream deixa em aberto é preenchido como o caminho dmabuf faz: a faixa limitada, e a matriz que o GStreamer supõe para a altura do quadro (`with_known_coding` em `sink.rs`). Uma faixa ou uma matriz que o stream informa é mantida. Nos mesmos clipes de barras de cores, convertidos na CPU, as cores agora são as do ffmpeg dentro de 3 (vermelho (251, 0, 0) para BT.709, (253, 0, 0) para BT.601), como em dmabufs. O custo de um vídeo é o mesmo: H.264 1080p30 com `vah264dec`, de 40.9 a 41.2 % de um núcleo contra 40.7 a 41.0 % antes, todos os quadros exibidos (quatro execuções alternadas de 30 s cada; a primeira execução da compilação antiga, 35.2 %, ficou fora de todas as outras). Se os decodificadores da NVIDIA informam a faixa continua não verificado; eles recebem o mesmo tratamento se não informarem.

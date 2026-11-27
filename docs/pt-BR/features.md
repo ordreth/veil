@@ -4,10 +4,10 @@ description: "O que é suportado, experimental, planejado ou sem suporte, recurs
 group: "Start"
 order: 3
 source: "README.md"
-source_hash: "1c659db16096b7566d65205affc59770ffe2294088aa6956e8a29b10aea57788"
+source_hash: "294334626649742f3eb37a4cbc521eaf6a9e12ad6cad3e286b97072327f0bd66"
 ---
 
-**Suportado** significa: implementado, coberto por testes automatizados e verificado em um compositor (até agora, um sway headless; veja o status acima). **Experimental** significa que funciona, com uma limitação que convém conhecer, ou que ainda não foi verificado onde importa. Os recursos **planejados** vêm depois da 1.0.
+**Suportado** significa: implementado, e coberto por testes automatizados que executam o daemon em um compositor (um sway headless, no CI). **Experimental** significa que funciona, com uma limitação que convém conhecer, ou que ainda não foi verificado onde importa. Os recursos **planejados** vêm depois da 1.0.
 
 | Recurso | Status | Notas |
 |---|---|---|
@@ -16,7 +16,7 @@ source_hash: "1c659db16096b7566d65205affc59770ffe2294088aa6956e8a29b10aea57788"
 | Escala: `fill`, `fit`, `stretch`, `center`, `tile` e uma cor de fundo | Suportado | Para imagens e vídeos (`tile` age como `center` para um vídeo). |
 | HiDPI e escala fracionária | Suportado | Verificado pixel a pixel nas escalas 1, 1.25, 1.5 e 2. |
 | Todos os monitores, ou os que forem indicados; um papel de parede por monitor; monitores conectados depois | Suportado | Com imagens. Com vídeo, veja a próxima linha. |
-| Mudanças de monitor durante a reprodução de um vídeo | Experimental | Uma mudança em qualquer monitor (conectado, desconectado, reescalado, ligado) derruba o daemon dentro do GStreamer ([problema conhecido 1](/apps/veil/docs/known-issues)). Sob a unidade do systemd, ele volta com seus papéis de parede em cerca de três segundos. |
+| Mudanças de monitor durante a reprodução de um vídeo | Experimental | Um monitor conectado, desconectado, reescalado, movido ou ligado deixa os vídeos tocando (verificado em um sway headless; até a 1.0.0-beta.1 isso derrubava o daemon dentro do GStreamer, [problema conhecido 1](/apps/veil/docs/known-issues)). Ainda não verificado no Hyprland. |
 | `veil set`, `clear`, `pause`, `resume`, `toggle`, `status`, `outputs` (também como JSON), `quit`, `ping` | Suportado | Códigos de saída estáveis. Um socket de controle para scripts e barras de status ([`docs/ipc.md`](/apps/veil/docs/ipc)). |
 | Um novo papel de parede só substitui o anterior quando está pronto | Suportado | Um vídeo assume quando o primeiro quadro está na tela; um arquivo que não pode ser exibido deixa o papel de parede anterior como está. |
 | Papéis de parede salvos e exibidos de novo após uma reinicialização | Suportado | Por monitor, em `~/.local/state/veil/state.json`. |
@@ -24,9 +24,9 @@ source_hash: "1c659db16096b7566d65205affc59770ffe2294088aa6956e8a29b10aea57788"
 | Unidade de usuário do systemd | Suportado | Pronta quando todos os monitores exibem seu papel de parede, reiniciada após uma falha, com watchdog. |
 | Pausar um vídeo atrás de uma janela em tela cheia (ou de janelas que o cubram) | Suportado no sway, experimental no Hyprland | Lido do IPC do compositor. No Hyprland 0.56.2, uma janela em tela cheia pausou a sua saída e, ao fechá-la, o vídeo voltou a ser reproduzido (2026-10-20); com `--pause-on covered` e nos demais casos, a verificação foi feita apenas contra um Hyprland falso. |
 | Interromper um vídeo enquanto a tela está bloqueada ou o monitor está desligado | Suportado no sway, experimental nos demais | Funciona em qualquer compositor que pare de aceitar os quadros do vídeo, como o sway; não verificado no Hyprland (bloqueio e DPMS). O vídeo recomeça do início. |
-| Decodificação de vídeo por hardware | Experimental | NVIDIA (`nvcodec`) decodifica na GPU, mas cada quadro é convertido para RGB na CPU ([problema conhecido 7](/apps/veil/docs/known-issues)). Intel e AMD (VA-API) deveriam evitar essa conversão; ainda não verificado. A decodificação por software sempre funciona. |
+| Decodificação de vídeo por hardware | Experimental | NVIDIA (`nvcodec`) decodifica na GPU, mas cada quadro é convertido para RGB na CPU ([problema conhecido 7](/apps/veil/docs/known-issues)). Intel e AMD (VA-API) decodificam na GPU e entregam seus quadros ao compositor como estão, em dmabufs, quando o compositor os aceita (o sway aceita; o Hyprland até a 0.57 não, então lá eles também são convertidos na CPU). Verificado em Intel em um sway headless; AMD e uma sessão real não foram verificados. A decodificação por software sempre funciona. |
 | GIFs animados | Suportado | Reproduzidos como vídeos; exige os plugins `libav` do GStreamer. |
-| Hyprland | Experimental | O alvo principal do veil. Imagens, vídeo em dois monitores e a pausa automática foram executados no Hyprland 0.56.2 (2026-10-20); fluidez, escalas, bloqueio, desligamento e recuperação de falhas não foram verificados lá. |
+| Hyprland | Experimental | O alvo principal do veil e a nossa configuração do dia a dia (0.56.2 e 0.57.2). O backend dele (a pausa automática) é testado contra um Hyprland falso; a renderização do próprio Hyprland não é coberta por testes ([`docs/testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md)). |
 | Outros compositores com layer-shell (river, niri, Wayfire, labwc, KDE Plasma) | Experimental | Deve funcionar; ninguém relatou ainda. Sem pausa atrás de janelas nesses compositores (a interrupção por bloqueio e desligamento continua valendo). |
 | Autocompletar do shell (bash, zsh, fish, nushell) e páginas de manual | Suportado | Gerados pelo próprio binário. |
 | Flake e pacote do Nix | Suportado | O pacote traz seus plugins do GStreamer. |

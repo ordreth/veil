@@ -6,7 +6,7 @@ use crate::error::VeilError;
 use crate::policy::PauseOn;
 use crate::scaling::{Color, ScaleMode};
 
-/// Minimalist dynamic and static wallpaper daemon for Wayland/wlroots (Hyprland)
+/// A wallpaper daemon for Wayland compositors with layer-shell
 ///
 /// `veil daemon` shows a picture or a video as the wallpaper of each output (monitor) of a Wayland compositor with the layer-shell protocol, such as Hyprland or sway. Each output can have a wallpaper of its own, and what each output shows is saved and shown again after a restart.
 ///

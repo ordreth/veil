@@ -12,6 +12,7 @@ copies them as they are with `pnpm sync:veil` and never edits them; ordreth-ops 
   `pnpm i18n:check` fails when the English page has changed since.
 - After bringing a translation up to date, run `pnpm i18n:stamp veil/<slug>` in the website: it writes the new
   `source_hash` into this file and into the website's copy. Then commit it here.
-- Links point to the website's routes (`/apps/veil/docs/<slug>`): these pages are read there.
-- A page without a file here (the license) is shown in English, with a notice.
+- Links point to the website's routes (`/apps/veil/docs/<slug>`, and `/apps/veil/privacy`, `/terms` and `/security` for the legal pages): these pages are read there. Links to files that are not pages go to the `stable` branch on GitHub, as the English pages do.
+- Every page has a file here. A page without one would be shown in English, with a notice. `terms.md` is a translation for convenience; it says that the English `LICENSE` and `ADDITIONAL-PERMISSIONS.md` prevail.
+- The website describes the latest release (the `stable` branch), so its copies follow these files as they are at the release tag.
 - This README is not a page; the sync skips it.

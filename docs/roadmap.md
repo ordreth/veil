@@ -31,13 +31,13 @@ All of these must be true for 1.0:
 - Every example in the documents is run by a test, as those of [`ipc.md`](ipc.md) are.
 - No `unwrap()` in production paths and every `unsafe` documented (the lints in `Cargo.toml` enforce it; confirm that nothing has silenced them).
 - A security review of the control socket ([`SECURITY.md`](../SECURITY.md)).
-- `CODE_OF_CONDUCT.md` names the GitHub account of the maintainer as its contact, private vulnerability reporting is turned on for the repository, and Discussions has its "Reports" category (settings on GitHub).
+- `CODE_OF_CONDUCT.md` names contact@ordreth.com as its contact, private vulnerability reporting is turned on for the repository, and Discussions has its "Reports" category (settings on GitHub).
 - `CHANGELOG.md` and the version in `Cargo.toml` and `flake.nix` are bumped.
 
 ### Open decisions
 
 - **Known issue 1:** fixed in veil by its own video sink (2026-11-09). Whether to report the `waylandsink` crash upstream after all is left open; it no longer affects veil.
-- **Other distributions and compositors:** veil is developed on NixOS and Hyprland, at the maintainer's own pace. Another system is looked at when people who use it show interest, not ahead of time ([Discussions, "Reports"](https://github.com/ordreth/veil/discussions/categories/reports)).
+- **Other distributions and compositors:** veil is developed on NixOS and Hyprland, at our own pace. Another system is looked at when people who use it show interest, not ahead of time ([Discussions, "Reports"](https://github.com/ordreth/veil/discussions/categories/reports)).
 - **The crate name:** `veil` is taken on crates.io; decided on 2026-10-19 not to publish there for 1.0.
 
 ## After 1.0

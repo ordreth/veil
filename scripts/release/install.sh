@@ -99,7 +99,7 @@ manifest() (
   echo "completions/_veil share/zsh/site-functions/_veil 644"
   echo "completions/veil.fish share/fish/vendor_completions.d/veil.fish 644"
   echo "completions/veil.nu share/nushell/vendor/autoload/veil.nu 644"
-  for doc in README.md CHANGELOG.md LICENSE ADDITIONAL-PERMISSIONS.md THIRD-PARTY-NOTICES contrib/config.example.toml docs/*.md; do
+  for doc in README.md CHANGELOG.md PRIVACY.md SECURITY.md LICENSE ADDITIONAL-PERMISSIONS.md THIRD-PARTY-NOTICES contrib/config.example.toml docs/*.md; do
     echo "$doc share/doc/veil/${doc##*/} 644"
   done
 )

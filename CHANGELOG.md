@@ -6,6 +6,11 @@ veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The l
 
 ## [Unreleased]
 
+### Added
+
+- A privacy policy, [`PRIVACY.md`](PRIVACY.md): what veil reads and writes on your computer, and that nothing leaves it. The release tarballs now carry it and `SECURITY.md` too.
+- The README says how to update veil for each way of installing it.
+
 ### Fixed
 
 - A monitor that is changed (scale, mode, position), plugged in, unplugged, powered on or woken from DPMS while a video plays no longer crashes the daemon (known issue 1). The crash was in GStreamer's `waylandsink`, which veil no longer uses.
@@ -15,6 +20,7 @@ veil 1.0.0-beta.1 is the first release, a beta. Everything below is in it. The l
 
 ### Changed
 
+- Releases and `main` are told apart. The `stable` branch is the latest release, and the README's Nix and from-source instructions now use it (`github:ordreth/veil/stable`); `main` is the work towards the next release, and its version ends in `-dev` (`1.0.0-beta.2-dev`). A flake input on `github:ordreth/veil` keeps following `main`.
 - Videos are shown by veil's own video sink, in a subsurface of veil's own, instead of GStreamer's `waylandsink`. Every frame is converted and cropped in one pass straight into the memory the compositor reads (what `fill` and `center` crop away is not converted), and the compositor scales it, as before. The daemon's event loop wakes about half as often while a video plays (34 instead of 85 times a second at 30 fps); the CPU a video costs is the same. In a compositor that holds the frame it shows (a headless sway), a 4K video takes about 100 MB more memory than before: three buffers of 33 MB.
 - Videos need `gst-plugins-bad` only for the hardware decoders; `waylandsink`, `videoconvert` and `videocrop` are no longer used.
 - A video whose monitor goes away for a moment (unplugged, disabled, a link that drops) goes on where it was when the monitor is back, instead of starting again from its beginning: its pipeline is kept, paused, for as long as `--release-unseen-after` keeps an unseen video (2 s by default; with `0`, until the monitor is back). A monitor that stays away longer gets the video from its beginning, as before.

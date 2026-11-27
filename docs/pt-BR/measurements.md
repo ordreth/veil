@@ -4,10 +4,10 @@ description: "Como o veil é medido, e todos os números até agora."
 group: "Reference"
 order: 7
 source: "docs/measurements.md"
-source_hash: "7d404af25a841c6b59394f042d951f3be6f621f4656b5c7738112b2073cbdb82"
+source_hash: "ff7dfdfb6c6687f0ca9f79428bfe9df89e1de2501a6ee9d6a2e4c82ccaaaa031"
 ---
 
-Quanto o daemon custa enquanto exibe um papel de parede, medido com `scripts/bench/`. As metas de desempenho do README são verificadas contra estes números (menos de 1% de CPU para vídeo, 0% para imagens estáticas, nenhum crescimento); onde não são atingidas, este arquivo diz isso.
+Quanto o daemon custa enquanto exibe um papel de parede, medido com `scripts/bench/`. As metas de desempenho do README são verificadas contra estes números (menos de 1% de CPU para vídeo, 0% para imagens estáticas, nenhum crescimento); onde não são atingidas, este arquivo diz isso. Só contam os números dos scripts ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Numbers"); os poucos mais antigos medidos de outro jeito estão marcados como tais e mantidos como histórico.
 
 ## Como executar
 
@@ -21,7 +21,7 @@ scripts/bench/bench.sh target/bench/clips/h264-1080p30.mp4  # 5 s warm-up, then 
 
 `bench.sh FILE` inicia um sway headless próprio (renderização pixman, uma saída de 1920x1080; `--size` a altera), executa `veil daemon --input FILE` nele, com diretórios próprios (seus papéis de parede salvos e seu arquivo de configuração não são lidos nem escritos), espera até o papel de parede ser exibido, espera `--warmup` segundos e então coleta amostras do daemon uma vez a cada `--interval` (1 s) durante `--duration` (60 s). Os resultados vão para `target/bench/<date>-<file>/` (`--out` para escolher): `samples.csv`, `report.txt` (também impresso), e os logs do daemon, do sway e dos elementos do GStreamer que o pipeline criou. `scripts/bench/summary.sh samples.csv` imprime de novo o resumo de uma execução.
 
-Outras opções: `--mode` (o `--mode` do veil), `--veil PATH` (outro binário, por exemplo `./result/bin/veil` do `nix build`, para comparar compilações) e `--outputs N` (N saídas headless lado a lado, cada uma reproduzindo o arquivo em um pipeline próprio; as contagens de quadros são somadas), e `--session`, que roda o daemon na sessão Wayland em que o script é iniciado, em vez de em um sway headless (pare antes o seu próprio daemon veil: um segundo se recusa a iniciar; `--output NAME` o limita a um monitor). As variáveis de ambiente chegam ao daemon: `GST_PLUGIN_FEATURE_RANK=nvh264dec:0` tira um decodificador do caminho, `MALLOC_ARENA_MAX=1` muda o alocador (o `target/release/veil` tem o padrão da glibc, a menos que ela seja definida; o relatório a nomeia).
+Outras opções: `--mode` (o `--mode` do veil), `--renderer gles2` ou `--renderer vulkan` (o sway headless renderiza em uma GPU e aceita dmabufs, em vez do `pixman` na CPU) com `--render-device /dev/dri/renderD128` (o nó de renderização dessa GPU; senão o wlroots escolhe um), `--veil PATH` (outro binário, por exemplo `./result/bin/veil` do `nix build`, para comparar compilações) e `--outputs N` (N saídas headless lado a lado, cada uma reproduzindo o arquivo em um pipeline próprio; as contagens de quadros são somadas), e `--session`, que roda o daemon na sessão Wayland em que o script é iniciado, em vez de em um sway headless (pare antes o seu próprio daemon veil: um segundo se recusa a iniciar; `--output NAME` o limita a um monitor). As variáveis de ambiente chegam ao daemon: `GST_PLUGIN_FEATURE_RANK=nvh264dec:0` tira um decodificador do caminho, `MALLOC_ARENA_MAX=1` muda o alocador (o `target/release/veil` tem o padrão da glibc, a menos que ela seja definida; o relatório a nomeia).
 
 ### As colunas de `samples.csv`
 
@@ -102,7 +102,7 @@ O daemon faz commit de sua superfície a cada frame callback enquanto um vídeo 
 | `still-1080p.png` | depois | 1.8 | 0.00 % | nenhum |
 | `h264-1080p60.mp4`, `fill`, 1920x1080 | depois | 200.9 | (não comparado) | 60.1 |
 
-Medido à mão na mesma configuração (um clipe VP8 de 1280x1080 em uma saída de 1920x1080, de 10 a 20 s por execução, duas rodadas alternando as compilações): os frame callbacks na superfície do veil passaram de 58 por segundo para nenhum em `fit` e `center` (nenhum em `fill` antes também); a CPU da thread do loop de eventos ficou na resolução do contador (0.15 a 0.4 %), e a do sway também (7.5 % em `fit`, 0.3 % em `fill`, sem mudança).
+Medido sem os scripts, mantido como histórico, na mesma configuração (um clipe VP8 de 1280x1080 em uma saída de 1920x1080, de 10 a 20 s por execução, duas rodadas alternando as compilações): os frame callbacks na superfície do veil passaram de 58 por segundo para nenhum em `fit` e `center` (nenhum em `fill` antes também); a CPU da thread do loop de eventos ficou na resolução do contador (0.15 a 0.4 %), e a do sway também (7.5 % em `fit`, 0.3 % em `fill`, sem mudança).
 
 O que isso diz:
 
@@ -232,9 +232,52 @@ Eles concordam com a tabela acima (coluna distribuída: 18.7 a 20.0 %, 36.2 a 38
 
 **Uma primeira sessão no mesmo dia foi descartada.** O navegador do desktop usou de 9 a 11 das 12 threads de CPU durante ela (carga 12.8, encontrada com `top` depois das execuções). Suas execuções de 1080p concordaram com a tabela acima (18.2, 35.5 e 38.6 %), mas as execuções que precisam de vários núcleos não: 4K por hardware a 153.6 %, 1080p por software a 27.5 %, 4K por software a 221.4 %. A tabela é de uma segunda sessão com a máquina 92 % ociosa (o desktop rodando, como nas execuções anteriores). Uma execução do bench não diz nada sobre a carga da máquina; confira o `uptime` antes e depois de uma execução.
 
+## O sink próprio do veil (2026-11-09, sway headless)
+
+O `waylandsink` foi substituído por um sink próprio do veil (`known-issues.md`, entrada 1). As duas compilações foram medidas na mesma tarde, alternadas: "antes" é o commit `1c5d63b` (1.0.0-beta.1 e correções), "depois" a árvore de trabalho com o novo sink. `bench.sh --duration 30`, `fill`, uma saída de 1920x1080, `MALLOC_ARENA_MAX=1`. **Outra máquina que não a de referência acima**: Intel Core i7-13620H (16 threads), uma GPU NVIDIA GeForce RTX 4050 Laptop (os decodificadores `nvcodec`) e uma GPU Intel (VA-API; "VA-API" na tabela é `GST_PLUGIN_FEATURE_RANK=nvh264dec:0`, que escolheu o `vah264dec`, não um decodificador por software). Carga média de cerca de 2 durante as execuções.
+
+| Clipe, decodificador | CPU antes / depois | Quadros por s antes / depois | Despertares por s antes / depois | RSS antes / depois |
+|---|---|---|---|---|
+| `h264-1080p30.mp4`, `nvh264dec` | 40.9 / 41.7 % | 29.9 / 30.0 | 85.2 / 33.8 | 157.5 / 183.4 MiB |
+| `h264-1080p60.mp4`, `nvh264dec` | 81.8 / 78.5 % | 60.0 / 59.7 | 161.4 / 64.7 | 157.2 / 183.5 MiB |
+| `h264-2160p60.mp4`, `nvh264dec` | 204.1 / 213.4 % | 60.1 / 59.9 | 159.9 / 81.3 | 250.8 / 357.1 MiB |
+| `h264-2160p60.mp4`, `vah264dec` | 175.6 / 174.7 % | 36.3 / 41.0 | 95.0 / 44.8 | 140.8 / 235.5 MiB |
+
+O que isso diz:
+
+- **A CPU é a mesma.** Nas duas compilações é a conversão, o mesmo código.
+- **O loop de eventos desperta cerca de metade das vezes.** As respostas às requisições de sincronização do `waylandsink` também iam para o loop de eventos do veil (entrada 6 acima); o novo sink não envia nenhuma.
+- **A memória é maior neste compositor.** O sway headless retém o buffer que exibe até o próximo substituí-lo, então o sink precisa de três (`video sink: the compositor holds every buffer; using 3` em um log de depuração): cerca de 25 MiB a mais em 1080p, 100 MiB em 4K. Um compositor que copia um quadro para uma textura quando ele é confirmado pode deixar o sink ficar com dois. Não medido em uma sessão real.
+- **Escalar na CPU não compensa.** Uma primeira versão convertia um quadro maior que o seu lugar no tamanho do lugar (4K nesta saída de 1080p: um quarto dos pixels). Custou mais e exibiu 33 quadros por segundo de 60: o conversor do GStreamer sai do seu caminho rápido quando escala. Medido com `gst-launch-1.0 ... nvh264dec ! videoconvertscale n-threads=2 ! ... ! fakesink sync=false`, 600 quadros de `h264-2160p60.mp4`: 2.8 s só decodificando, 11.4 s com a conversão em 4K, 15.9 s para 1080p com `method=bilinear`, 14.4 s com `4-tap`, 19.2 s com `lanczos`, 9.1 s com `nearest-neighbour`.
+- **Uma primeira versão que não esvaziava a conexão depois de cada quadro exibia 3 quadros por segundo**: suas requisições esperavam no buffer da libwayland até o loop de eventos despertar por outro motivo. O `two_videos_play_side_by_side` (`tests/headless.rs`) agora verifica a taxa de quadros.
+
+## Quadros em dmabufs (2026-11-20, sway headless na GPU Intel)
+
+O sink recebe os quadros dos decodificadores VA-API em dmabufs e os entrega ao compositor como estão (`known-issues.md`, entrada 7). A mesma máquina de "O sink próprio do veil" acima (Intel Core i7-13620H com gráficos Raptor Lake, Mesa 26.3, e uma RTX 4050). O sway headless renderiza na GPU Intel (`bench.sh --renderer gles2 --render-device /dev/dri/renderD128`), então aceita dmabufs; os decodificadores da NVIDIA foram tirados do caminho (`GST_PLUGIN_FEATURE_RANK=nvh264dec:0,nvh265dec:0,nvav1dec:0,nvvp9dec:0,nvvp8dec:0`), então todo clipe foi decodificado por um decodificador VA-API. "Antes" é o commit `c5943ca`, que converte cada quadro na CPU; "depois" a primeira versão da mudança, que entregava todo vídeo ao compositor. Alternadas, `--duration 30`, `fill`, uma saída de 1920x1080, o alocador da glibc.
+
+| Clipe, decodificador | CPU antes / depois | Quadros por s antes / depois (descartados pelo sink) | RSS antes / depois |
+|---|---|---|---|
+| `h264-1080p30.mp4`, `vah264dec` | 45.6 / 2.3 % | 30.0 (1) / 30.0 (0) | 144.6 / 121.4 MiB |
+| `h264-1080p60.mp4`, `vah264dec` | 71.4 / 6.1 % | 60.0 (1) / 59.9 (0) | 143.9 / 121.4 MiB |
+| `h264-2160p60.mp4`, `vah264dec` | 174.1 / 6.7 % | **39.5 (422)** / 60.0 (0) | 210.7 / 121.8 MiB |
+| `hevc-2160p60.mp4`, `vah265dec` | 175.3 / 8.6 % | **41.0 (410)** / 60.0 (0) | 210.9 / 122.2 MiB |
+| `vp9-1080p60.webm`, `vavp9dec` | 80.5 / 7.4 % | 59.5 (0) / 60.3 (0) | 140.2 / 120.0 MiB |
+| `av1-1080p60.mkv`, `vaav1dec` | 82.7 / 7.9 % | 60.0 (0) / 59.6 (0) | 142.2 / 122.0 MiB |
+
+No caminho da CPU (pixman, os decodificadores padrão: `nvh264dec` para H.264, `vavp9dec` para VP9) nada mudou: 44.6 / 43.6 % e 76.3 / 76.2 %, todos os quadros exibidos. As threads foram de 9 a 10 para 8 a 9, os descritores subiram de 34 para 43 a 46 (os dmabufs importados). O RSS subiu de 0.1 a 0.4 MiB por minuto em todas as execuções, antes e depois, que é o ruído de uma execução de 30 s.
+
+A mudança final também verifica as cores (abaixo), e o `gles2` não pode ser informado delas: com a compilação final, `h264-1080p30.mp4` (sem marcação, por isso tomado como BT.709) é convertido na CPU ali, como antes. Com `--renderer vulkan`, que pode ser informado, a compilação final usou **3.4 %** contra 44.8 % antes (29.8 quadros por segundo, nenhum descartado, contra 26.5 com 104 descartados). Os outros clipes com `vulkan` não foram executados: a execução foi interrompida por falta de memória na máquina.
+
+O que isso diz:
+
+- **A conversão era todo o custo.** Sem ela, um vídeo 1080p custa de 2 a 8 % de um núcleo, cerca de um décimo a um vigésimo. O que resta é decodificar na GPU, o loop de eventos e o tratamento de cada quadro pelo sink.
+- **4K a 60 fps é reproduzido por inteiro.** Antes, o caminho da CPU perdia um terço dos quadros a 175 % (suas duas threads de conversão não bastavam); agora, 60 por segundo a 7 a 9 %.
+- **Menos memória.** Nenhum buffer `wl_shm`: os quadros ficam nos dmabufs do decodificador, cerca de 20 MiB a menos em 1080p e 90 MiB a menos em 4K.
+- **As cores dependem de o compositor conhecer a codificação.** Com barras de cores codificadas como BT.709 e como BT.601 (agora um teste: `tests/gpu.rs`, [`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md)), o `vulkan` exibiu as duas como o ffmpeg as decodifica, dentro de 3 em 255, depois que o veil lhe informou a codificação. O `gles2`, sem ser informado de nada, exibiu BT.601 certo e BT.709 errado (vermelho 231 em vez de 251, ciano com 20 de vermelho), e por isso um vídeo assim é convertido na CPU ali.
+
 ## Ainda não medido
 
-- Uma sessão real (Hyprland com seu caminho dmabuf): `--session`, pelo mantenedor. Sabe-se que a conversão acontece ali também na NVIDIA (acima); o que resta é a parte do próprio compositor.
-- GPUs Intel e AMD, e VA-API: nenhum hardware assim aqui.
+- Uma sessão real (`--session`): ela precisa de uma sessão de desktop, que as execuções automatizadas não têm ([`testing.md`](https://github.com/ordreth/veil/blob/stable/docs/testing.md), "Not covered by any test"). Sabe-se que a conversão acontece ali também na NVIDIA (acima); o que resta é a parte do próprio compositor.
+- GPUs AMD. O caminho VA-API da Intel está em "Quadros em dmabufs" acima, em um sway headless; não em uma sessão real.
 - Um vídeo pausado e um liberado: os testes headless os verificam (CPU no máximo um quarto da de reprodução, e no máximo 2 ticks em 2 s), mas não há execução do bench para eles.
 - Horas e dias: o teste de longa duração de 24 horas do checklist de lançamento ([`roadmap.md`](/apps/veil/docs/roadmap)), nesta máquina, também com o decodificador por software (a partida lenta do clipe de 1 s acima).

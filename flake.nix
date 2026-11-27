@@ -1,5 +1,5 @@
 {
-  description = "Veil - Lightweight dynamic wallpaper daemon for Hyprland";
+  description = "veil, a wallpaper daemon for Wayland compositors with layer-shell";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

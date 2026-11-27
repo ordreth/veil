@@ -77,7 +77,7 @@ None are left: every check that was once made by hand (their procedures are in t
 
 ### Not covered by any test
 
-What CI and a headless sway cannot reach. Problems here are found by using veil (the developer uses it daily on Hyprland) and through reports:
+What CI and a headless sway cannot reach. Problems here are found by using veil (we use it daily on Hyprland) and through reports:
 
 - **Hyprland itself.** Its backend is tested against a fake Hyprland, not against Hyprland's rendering: whether videos play smoothly there ([known issue 6](known-issues.md)), whether a video in `fill` stands still at its loop point ([known issue 5](known-issues.md)), its lock screen, DPMS and logout.
 - **Graphics cards CI does not have:** CI has no GPU, so hardware decoding (NVIDIA, Intel, AMD) and the dmabuf path are not tested there. The dmabuf path on Intel and AMD has tests of its own (`tests/gpu.rs`) that run where such a GPU is; NVIDIA's decoders have none.

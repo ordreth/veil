@@ -14,7 +14,7 @@ You will be told when the report has been read and what is planned. A fix is pub
 
 ## Supported versions
 
-veil is in beta (1.0.0-beta.1). Fixes go to `main` and into a new release; only the latest release gets them.
+veil is in beta. Fixes go to `main` and into a new release; only the latest release (the `stable` branch) gets them. A build of `main` has a version ending in `-dev`: report its commit too.
 
 ## Verifying a release
 
@@ -40,10 +40,10 @@ A client cannot block the daemon or make it exit: requests have a time limit (2 
 
 **What veil writes.** The state file (`$XDG_STATE_HOME/veil/state.json`) is written with mode `0600` in directories with mode `0700`, to a temporary file that is renamed over it. The control socket and its lock file have mode `0600`. Desktop notifications go over the session bus, and may contain the paths of wallpapers.
 
-**The code.** `unsafe` is allowed in one module, `src/engine/video.rs`, to hand the raw Wayland pointers to GStreamer, with the reason for each use next to it; the compiler refuses it everywhere else. A panic ends the daemon (the release build aborts) instead of leaving it in a broken state.
+**The code.** `unsafe` is allowed in one module, `engine::video` (`src/engine/video.rs` and `src/engine/video/`), and the compiler refuses it everywhere else. That module subclasses a GStreamer element (veil's own video sink), and the `glib` macros that do it expand to `unsafe` code; its own `unsafe` is one block, in `src/engine/video/sink.rs`, that borrows the file descriptor of a frame's dmabuf from GStreamer, with the reason next to it (clippy refuses an `unsafe` block without one). A panic ends the daemon (the release build aborts) instead of leaving it in a broken state.
 
 ## What is in scope
 
 Report privately anything that lets someone do what the user did not allow: a process of another user getting the daemon to do anything, a file veil writes being readable by another user or written somewhere else, a request or a compositor answer that corrupts memory or runs code, a picture that gets past the size limits.
 
-Not a vulnerability: what the user's own processes can do through the socket (above), and the crash of known issue 1 (a monitor change while a video plays, [`docs/known-issues.md`](docs/known-issues.md)). A crash or hang from a malformed request or compositor answer that does none of the above is a bug: report it in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports).
+Not a vulnerability: what the user's own processes can do through the socket (above), and, in 1.0.0-beta.1, the crash of known issue 1 (a monitor change while a video plays, [`docs/known-issues.md`](docs/known-issues.md); fixed on `main`). A crash or hang from a malformed request or compositor answer that does none of the above is a bug: report it in [Discussions, category "Reports"](https://github.com/ordreth/veil/discussions/categories/reports).
