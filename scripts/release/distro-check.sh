@@ -137,12 +137,17 @@ test_tools() {
     esac
 }
 
+# Runs the commands in $1, one per line, in this shell and not in a pipeline's
+# subshell, so that what one of them changes in the environment holds for the
+# next ones and for the build: rustup's `. "$HOME/.cargo/env"` puts cargo on
+# PATH.
 run_commands() {
     local command
     while IFS= read -r command; do
+        [ -n "$command" ] || continue
         printf '+ %s\n' "$command"
         DEBIAN_FRONTEND=noninteractive eval "$command"
-    done
+    done <<< "$1"
 }
 
 smoke() {
@@ -178,7 +183,12 @@ smoke() {
             [ -S "$socket" ] && display=${socket##*/} && break
         done
         [ -n "$display" ] && break
-        kill -0 "$sway_pid" 2> /dev/null || { cat "$work/sway.log"; fail "sway exited"; }
+        if ! kill -0 "$sway_pid" 2> /dev/null; then
+            cat "$work/sway.log"
+            command -v getcap > /dev/null && echo "sway's file capabilities: $(getcap "$(command -v sway)")"
+            echo "this process's capability bounding set: $(grep CapBnd /proc/self/status)"
+            fail "sway exited"
+        fi
         sleep 0.1
     done
     [ -n "$display" ] || fail "sway does not listen"
@@ -236,12 +246,14 @@ tarball)
     media=$(realpath "$3")
     distro=$(distro)
     refresh "$distro"
-    package_commands "$distro" tarball | run_commands
+    commands=$(package_commands "$distro" tarball)
+    run_commands "$commands"
     test_tools "$distro"
     work=$(mktemp -d)
     cp "$tarball" "$work"/
     tarball=${tarball##*/}
-    (cd "$work" && install_commands tarball | run_commands)
+    commands=$(install_commands tarball)
+    (cd "$work" && run_commands "$commands")
     test -x "$HOME/.local/bin/veil" || fail "install.sh --prefix ~/.local installed no binary"
     smoke /usr/local/bin/veil "$media"
     ;;
@@ -250,9 +262,11 @@ source)
     media=$(realpath "$2")
     distro=$(distro)
     refresh "$distro"
-    package_commands "$distro" source | run_commands
+    commands=$(package_commands "$distro" source)
+    run_commands "$commands"
     test_tools "$distro"
-    (cd "$root" && install_commands source | run_commands)
+    commands=$(install_commands source)
+    (cd "$root" && run_commands "$commands")
     install -m 755 "$HOME/.local/bin/veil" /usr/local/bin/veil
     smoke /usr/local/bin/veil "$media"
     ;;
